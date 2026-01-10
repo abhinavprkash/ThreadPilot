@@ -1,0 +1,102 @@
+ThreadPilot - Work Log & TODO
+================================
+
+COMPLETED TODAY (Jan 10, 2026):
+-------------------------------
+1. Synthetic Data Generation
+   - Created generate_synthetic_data.py script
+   - Generates realistic multi-day Slack conversations using Gemini API
+   - 5 teams, 16 personas, story arcs with blockers/dependencies
+   - Fixed API compatibility: switched from deprecated google-generativeai to google-genai package
+   - Model: gemini-2.5-flash (works with free Google AI Studio API key)
+   - Rate limiting: 5s delays to avoid hitting free tier limits
+
+2. CLI Commands Setup
+   - Added poetry script: poetry run generate-data --days N --channels N
+   - Created generate_data.sh wrapper script (works from any directory)
+   - Updated README with all commands
+   - Removed redundant USAGE.md file
+
+3. Pipeline Testing
+   - Tested digest pipeline in mock mode
+   - Replaced fixtures/slack_mock.json with generated conversations
+   - Pipeline runs successfully but uses mock responses
+
+
+CURRENT ISSUES:
+--------------
+1. LangChain API Incompatibility
+   - Digest agents use langchain-google-genai package
+   - This package requires Google Cloud credentials (Application Default Credentials)
+   - Free Google AI Studio API key does NOT work with langchain-google-genai
+   - Result: Agents fall back to mock mode (hardcoded responses)
+   - Error: "Your default credentials were not found. To set up Application Default Credentials..."
+
+2. Mock Mode Limitations
+   - Agents are NOT actually analyzing the generated conversations
+   - They return hardcoded mock responses
+   - Pipeline structure works, but no real AI analysis happening
+
+
+TODO FOR TOMORROW:
+-----------------
+HIGH PRIORITY:
+1. Fix Agent LLM Integration
+   - Remove langchain-google-genai dependency from agents
+   - Switch agents to use google-genai package (same as data generator)
+   - Update src/daily_digest/agents/base.py:
+     * Replace ChatGoogleGenerativeAI with direct genai.Client
+     * Use llm.models.generate_content() API
+     * Keep same prompt structure
+   - Files to modify:
+     * src/daily_digest/agents/base.py (LLM initialization)
+     * src/daily_digest/agents/team_analyzer.py
+     * src/daily_digest/agents/dependency_linker.py
+
+2. Test Real Agent Analysis
+   - Run: poetry run python -m daily_digest.main --mock
+   - Verify agents actually analyze generated conversations
+   - Check output shows real insights from synthetic data
+
+MEDIUM PRIORITY:
+3. Multi-Day Conversation Testing
+   - Generate larger dataset: ./generate_data.sh --days 10 --channels 5
+   - Test digest handles multi-day story arcs correctly
+   - Verify cross-team dependencies are detected
+
+4. Integration with Real Slack (Optional)
+   - Test with actual Slack workspace if needed
+   - May require different approach for production
+
+
+TECHNICAL NOTES:
+---------------
+- Free Gemini API Key: AIzaSyBzHwYHoOFIfP97u9-OY_5CuaYd24_Fio4 (in .env)
+- Model that works: gemini-2.5-flash (v1 endpoint, not v1beta)
+- Project directory: /home/mritvik/Documents/Code/Hackathon/ThreadPilot
+- Always run poetry commands from project directory (where pyproject.toml exists)
+- Generated data location: data/synthetic_conversations.json
+- Fixture file: fixtures/slack_mock.json (currently has generated data)
+
+
+COMMANDS REFERENCE:
+------------------
+Generate data:
+  ./generate_data.sh --days 5 --channels 5
+
+Run digest (mock):
+  poetry run python -m daily_digest.main --mock
+
+Run tests:
+  pytest tests/ -v
+
+
+FILES MODIFIED TODAY:
+--------------------
+- scripts/generate_synthetic_data.py (created, API integration)
+- src/daily_digest/generate_data.py (created, CLI wrapper)
+- pyproject.toml (added generate-data script)
+- generate_data.sh (created, shell wrapper)
+- README.md (updated with commands, removed emojis)
+- fixtures/slack_mock.json (replaced with generated data)
+- .env (GOOGLE_API_KEY configured)
