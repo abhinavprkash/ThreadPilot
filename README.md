@@ -1,15 +1,36 @@
 # ThreadPilot - Daily Digest PoC
 
-A proof-of-concept for generating daily team digests from Slack channels using LangChain agents.
+A proof-of-concept for generating daily team digests from Slack channels using AI agents.
+
+## How to Run
+
+1. Install dependencies:
+   ```bash
+   poetry install
+   ```
+
+2. Get a Google AI Studio API key from https://aistudio.google.com/app/apikey
+
+3. Set up environment:
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your GOOGLE_API_KEY
+   ```
+
+4. Generate test data and run:
+   ```bash
+   ./generate_data.sh --days 3 --channels 3
+   python -m daily_digest.main --mock
+   ```
 
 ## Features
 
 - **Multi-team aggregation**: Fetches messages from mechanical, electrical, and software team channels
-- **AI-powered analysis**: Uses 4 specialized LangChain agents:
-  - **Extractor**: Identifies key updates and progress
-  - **BlockerDetector**: Finds blockers and issues
-  - **DecisionTracker**: Captures decisions made
-  - **Summarizer**: Creates concise team summaries
+- **AI-powered analysis**: Uses specialized agents powered by Google Gemini:
+  - **TeamAnalyzer**: Extracts updates, blockers, and decisions
+  - **DependencyLinker**: Detects cross-team dependencies
+  - **Feedback System**: Learns from user reactions
+  - **Personalization**: Ranks content by persona (Lead, IC, PM, Executive)
 - **Smart distribution**: Posts to digest channel, threads details, and DMs leadership
 - **Mock testing**: In-process mock Slack client for development
 - **Synthetic data generation**: Creates realistic multi-day conversations for testing
@@ -22,7 +43,7 @@ poetry install
 
 # Copy environment template
 cp .env.example .env
-# Edit .env with your Slack and Google API credentials
+# Edit .env with your Google API key
 
 # Generate synthetic conversation data (for testing)
 ./generate_data.sh --days 5 --channels 5
