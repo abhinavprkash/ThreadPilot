@@ -1,0 +1,113 @@
+ThreadPilot - Work Log & TODO
+================================
+
+COMPLETED (Feb 13, 2026):
+-------------------------
+✅ FIXED: Agent LLM Integration
+   - Agents were incorrectly set to mock_mode when using --mock flag
+   - Fixed: --mock now only mocks Slack client, NOT the LLM agents
+   - Updated src/daily_digest/main.py to pass mock_mode=False to orchestrator
+   - Agents now use real Gemini API even with mock Slack data
+
+✅ FIXED: Gemini Model Configuration
+   - Updated model name in .env from "models/gemini-1.0-pro" to "models/gemini-2.5-flash"
+   - Model names require "models/" prefix for v1beta API
+   - Verified Google AI Studio API key is working
+
+✅ VERIFIED: Real AI Analysis Working
+   - Tested with: poetry run python -m daily_digest.main --mock --preview
+   - Results: 9 events extracted, 1 dependency found, 9 action items
+   - Gemini successfully analyzing conversations (not using mock responses)
+   - Agent durations: ~18s per team analysis (real API calls)
+
+
+PREVIOUS WORK (Jan 10-25, 2026):
+--------------------------------
+1. Synthetic Data Generation (Jan 10)
+   - Created generate_synthetic_data.py script
+   - Generates realistic multi-day Slack conversations using Gemini API
+   - 5 teams, 16 personas, story arcs with blockers/dependencies
+   - Model: gemini-2.5-flash (works with free Google AI Studio API key)
+
+2. Agent API Migration (Jan 18)
+   - Removed langchain and langchain-google-genai dependencies
+   - Switched to direct google-genai API (google-genai package v1.57.0)
+   - Updated BaseAgent and DigestEvaluator to use genai.Client
+   - Now works with free Google AI Studio API keys
+
+3. Documentation (Jan 25)
+   - Added Kiro design docs (requirements.md, design.md)
+
+
+CURRENT STATUS:
+--------------
+✅ All systems operational
+✅ Agents using real Gemini AI analysis
+✅ Pipeline tested and working
+✅ API key configured and secure (.env in .gitignore)
+
+
+VIEWING RESULTS:
+---------------
+1. Preview Mode (terminal output):
+   poetry run python -m daily_digest.main --mock --preview
+
+2. Memory Store (JSON files):
+   - data/memory/blockers.json
+   - data/memory/decisions.json
+   - data/memory/dependency_graph.json
+
+3. Real Slack Mode (posts to channels):
+   poetry run python -m daily_digest.main
+
+
+NEXT STEPS / TODO:
+-----------------
+1. Multi-Day Conversation Testing
+   - Generate larger dataset: ./generate_data.sh --days 10 --channels 5
+   - Test digest handles multi-day story arcs correctly
+   - Verify cross-team dependencies are detected across days
+
+2. Feedback Loop Testing
+   - Run feedback simulation: poetry run python scripts/run_feedback_simulation.py
+   - Test persona-based ranking
+   - Verify prompt enhancement from feedback
+
+3. Production Deployment (Optional)
+   - Test with actual Slack workspace
+   - Set up scheduled runs (cron or GitHub Actions)
+   - Configure proper logging and monitoring
+
+
+TECHNICAL NOTES:
+---------------
+- Google AI Studio API Key: Configured in .env (NOT tracked in git)
+- Working model: models/gemini-2.5-flash
+- API version: v1beta (requires "models/" prefix)
+- Project directory: /home/mritvik/Documents/Code/Hackathon/ThreadPilot
+- Generated data: fixtures/slack_mock.json (synthetic conversations)
+
+
+COMMANDS REFERENCE:
+------------------
+Generate synthetic data:
+  ./generate_data.sh --days 5 --channels 5
+
+Run digest (mock Slack, real AI):
+  poetry run python -m daily_digest.main --mock
+
+Preview digest (no Slack posting):
+  poetry run python -m daily_digest.main --mock --preview
+
+Run digest with real Slack:
+  poetry run python -m daily_digest.main
+
+Run tests:
+  pytest tests/ -v
+
+
+SECURITY:
+---------
+✅ .env file in .gitignore (API keys not tracked)
+✅ No API keys in TODO.txt or other docs
+✅ All sensitive credentials in .env only

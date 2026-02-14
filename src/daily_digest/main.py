@@ -21,12 +21,12 @@ async def run_digest(
 ) -> dict:
     """
     Main entry point for digest generation.
-    
+
     Args:
         mock: Use mock Slack client with fixtures
         preview_only: Generate digest but don't post
         config: Optional config override
-        
+
     Returns:
         Dictionary with pipeline results
     """
@@ -44,18 +44,18 @@ async def run_digest(
         logger.info("Using mock configuration with fixture channel IDs")
     else:
         config = config or get_config()
-    
+
     # Determine fixture path
     fixture_path = None
     if mock:
         fixture_path = str(Path(__file__).parent.parent.parent / "fixtures" / "slack_mock.json")
         logger.info(f"Using mock client with fixtures: {fixture_path}")
-    
+
     slack_client = SlackClient(mock_data_path=fixture_path)
-    
+
     # Initialize state tracking (skip in mock mode)
     state = None if mock else DigestState()
-    
+
     # Determine since timestamp
     if mock:
         since = datetime(2023, 12, 1)
@@ -68,25 +68,27 @@ async def run_digest(
             logger.info("No previous run found, fetching all messages within lookback window")
     else:
         since = None
-    
+
     # Track run info for state
     run_timestamp = datetime.now()
     run_id = run_timestamp.strftime("%Y%m%d_%H%M%S")
-    
+
     try:
         # Create orchestrator
-        orchestrator = DigestOrchestrator(config=config, mock_mode=mock)
-        
+        # Note: mock_mode=False means LLM agents will use real API calls
+        # even when Slack client is in mock mode
+        orchestrator = DigestOrchestrator(config=config, mock_mode=False)
+
         # Run the pipeline
         logger.info("Running digest pipeline...")
         output = await orchestrator.run(slack_client, since)
-        
+
         logger.info(f"Generated digest with {len(output.team_analyses)} team analyses")
-        
+
         # Format and distribute
         formatter = DigestFormatter()
         distributor = DigestDistributor(slack_client, config, formatter)
-        
+
         if preview_only:
             logger.info("Preview mode - not posting to Slack")
             result = await distributor.preview(output, output.team_analyses)
@@ -94,17 +96,17 @@ async def run_digest(
         else:
             logger.info("Distributing digest...")
             result = await distributor.distribute(output, output.team_analyses)
-            
+
             if result.get("errors"):
                 logger.warning(f"Distribution completed with {len(result['errors'])} errors")
             else:
                 logger.info("Distribution completed successfully")
-                
+
                 # Save successful run to state (advance timestamp)
                 if state:
                     channels_processed = list(output.team_analyses.keys())
                     message_counts = {
-                        name: analysis.message_count 
+                        name: analysis.message_count
                         for name, analysis in output.team_analyses.items()
                     }
                     run = DigestRun(
@@ -116,13 +118,13 @@ async def run_digest(
                     )
                     state.save_run(run)
                     logger.info(f"State saved: next run will fetch messages after {run_timestamp.isoformat()}")
-        
+
         return {
             "success": True,
             "output": output,
             "distribution": result if not preview_only else None,
         }
-        
+
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
         return {
@@ -136,11 +138,11 @@ def _print_preview(result: dict):
     print("\n" + "=" * 60)
     print("DIGEST PREVIEW")
     print("=" * 60)
-    
+
     print("\n--- MAIN POST ---")
     print(f"Text: {result['main_post']['text']}")
     print(f"Blocks: {len(result['main_post']['blocks'])} blocks")
-    
+
     for i, block in enumerate(result['main_post']['blocks'][:10]):
         block_type = block.get('type', 'unknown')
         if block_type == 'section':
@@ -151,12 +153,12 @@ def _print_preview(result: dict):
             print(f"  [{i}] header: {text}")
         else:
             print(f"  [{i}] {block_type}")
-    
+
     print("\n--- TEAM DETAILS ---")
     for team_name, details in result.get('team_details', {}).items():
         print(f"\n[{team_name}]")
         print(details[:500] + "..." if len(details) > 500 else details)
-    
+
     print("\n--- LEADERSHIP DM ---")
     print(result['leadership_dm'][:1000] + "..." if len(result['leadership_dm']) > 1000 else result['leadership_dm'])
     print("=" * 60)
@@ -174,7 +176,7 @@ def cli():
     )
     parser.add_argument(
         "--preview",
-        action="store_true", 
+        action="store_true",
         help="Generate digest but don't post to Slack"
     )
     parser.add_argument(
@@ -182,18 +184,55 @@ def cli():
         action="store_true",
         help="Enable debug logging"
     )
-    
+    parser.add_argument(
+        "--generate-data",
+        action="store_true",
+        help="Generate synthetic Slack conversation data"
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=5,
+        help="Number of days to generate (default: 5)"
+    )
+    parser.add_argument(
+        "--channels",
+        type=int,
+        default=5,
+        help="Number of channels to generate (default: 5)"
+    )
+
     args = parser.parse_args()
-    
+
+    # Handle data generation mode
+    if args.generate_data:
+        from pathlib import Path
+        import sys
+        # Add scripts directory to path
+        scripts_dir = Path(__file__).parent.parent.parent / "scripts"
+        sys.path.insert(0, str(scripts_dir))
+
+        from generate_synthetic_data import main as generate_main, parse_args as generate_parse_args
+        import sys
+
+        # Create args for the generator
+        gen_args = generate_parse_args([
+            "--days", str(args.days),
+            "--channels", str(args.channels),
+            "--output", "data/synthetic_conversations.json"
+        ])
+        generate_main(gen_args)
+        return
+
     if args.debug:
         import logging
         logging.getLogger("daily_digest").setLevel(logging.DEBUG)
-    
+
     result = asyncio.run(run_digest(
         mock=args.mock,
         preview_only=args.preview,
     ))
-    
+
     if result["success"]:
         print("\n✅ Digest generated successfully!")
     else:

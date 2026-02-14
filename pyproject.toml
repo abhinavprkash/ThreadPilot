@@ -9,11 +9,10 @@ packages = [{include = "daily_digest", from = "src"}]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 slack-sdk = "^3.21.3"
-langchain = "^0.3.3"
-langchain-google-genai = "^2.0.0"
 python-dotenv = "^1.0.0"
 pydantic = "^2.0.0"
 flask = "^3.0.0"
+google-genai = "^1.57.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -22,6 +21,7 @@ pytest-cov = "^4.1.0"
 
 [tool.poetry.scripts]
 daily-digest = "daily_digest.main:cli"
+generate-data = "daily_digest.generate_data:cli"
 
 [build-system]
 requires = ["poetry-core"]
