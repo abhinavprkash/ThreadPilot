@@ -137,10 +137,3 @@ Run digest with real Slack:
 
 Run tests:
   pytest tests/ -v
-
-
-SECURITY:
----------
-✅ .env file in .gitignore (API keys not tracked)
-✅ No API keys in TODO.txt or other docs
-✅ All sensitive credentials in .env only

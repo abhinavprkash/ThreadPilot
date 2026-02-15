@@ -221,7 +221,6 @@ async def main():
     parser.add_argument(
         "--input",
         "-i",
-        required=True,
         help="Path to JSON file with messages",
     )
     parser.add_argument(
@@ -256,6 +255,9 @@ async def main():
         sys.exit(0 if result.get("ok") else 1)
 
     # Normal mode: send from JSON
+    if not args.input:
+        parser.error("--input/-i is required when not using --test mode")
+
     if not Path(args.input).exists():
         print(f"❌ Error: File not found: {args.input}")
         sys.exit(1)
