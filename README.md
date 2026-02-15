@@ -148,6 +148,8 @@ src/daily_digest/
 ├── config.py              # Channel and distribution configuration
 ├── slack_client.py        # Real + Mock Slack client wrapper
 ├── message_aggregator.py  # Fetch and filter messages
+├── distributor.py         # Posts to Slack + exports DMs
+├── formatter.py           # Formats Slack blocks and messages
 ├── agents/                # LangChain agents
 │   ├── base.py
 │   ├── extractor.py
@@ -162,10 +164,16 @@ src/daily_digest/
 └── main.py               # CLI entry point
 
 scripts/
-└── generate_synthetic_data.py  # Synthetic conversation generator
+├── generate_synthetic_data.py   # Synthetic conversation generator
+├── send_dm_bot.py               # Standalone DM sender (reads JSON)
+└── demo_personalized_dms.py     # Example: generate + export DMs
+
+docs/
+└── PERSONALIZED_DMS.md          # DM bot setup and usage guide
 
 data/
 ├── synthetic_conversations.json  # Generated test data
+├── personalized_dms.json        # Exported DM messages (JSON)
 ├── memory/                       # Persistent memory stores
 │   ├── blockers.json
 │   └── decisions.json
@@ -214,6 +222,7 @@ python -m daily_digest.main --preview
 
 ## Architecture
 
+### Digest Generation Pipeline
 ```
 Slack Channels → Aggregator → Agents → Generator → Formatter → Distributor → Slack
       ↓              ↓           ↓          ↓           ↓            ↓
@@ -221,3 +230,30 @@ Slack Channels → Aggregator → Agents → Generator → Formatter → Distrib
  electrical                   blockers   insights   blocks      leadership DMs
  software                    decisions              threads
 ```
+
+### Personalized DM Bot Architecture
+```
+Digest Pipeline → JSON Export → Standalone Bot → Rate Limiter → Slack DMs
+                      ↓              ↓              ↓              ↓
+                  audit log    read messages   1 msg/sec      all users
+                  retry-able   personalized    respects       individual
+                               by role/team    limits         delivery
+```
+
+**Benefits:**
+- **Decoupled**: Digest generation separate from message delivery
+- **Reliable**: JSON acts as audit log, easy to retry failures
+- **Scalable**: Bot handles rate limits independently (~1 msg/sec)
+- **Flexible**: Can re-send same digest or customize per user
+
+**Usage:**
+```bash
+# Step 1: Generate digest and export personalized DMs
+python scripts/demo_personalized_dms.py --export
+
+# Step 2: Send DMs to users
+python scripts/send_dm_bot.py --input data/personalized_dms.json --dry-run
+python scripts/send_dm_bot.py --input data/personalized_dms.json
+```
+
+See [docs/PERSONALIZED_DMS.md](docs/PERSONALIZED_DMS.md) for detailed setup and usage.

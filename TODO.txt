@@ -63,20 +63,53 @@ VIEWING RESULTS:
 
 NEXT STEPS / TODO:
 -----------------
+
+🔧 SLACK APP SETUP (Required for Production):
+1. Create Slack App
+   - Go to https://api.slack.com/apps
+   - Click "Create New App" → "From scratch"
+   - Name: "ThreadPilot" | Select your workspace
+
+2. Configure OAuth Scopes (in "OAuth & Permissions")
+   Bot Token Scopes needed:
+   - chat:write (send messages)
+   - users:read (get user info)
+   - im:write (open DMs)
+   - channels:history (read public channels)
+   - channels:read (view channel info)
+
+3. Install App & Get Token
+   - Click "Install to Workspace" → "Allow"
+   - Copy "Bot User OAuth Token" (starts with xoxb-)
+
+4. Configure Environment
+   - Add to .env: SLACK_BOT_TOKEN=xoxb-your-token-here
+   - Add channel IDs: CHANNEL_DIGEST=C123456789
+   - Add user IDs: LEADERSHIP_USERS=U123,U456
+
+5. Test DM Bot
+   - python scripts/send_dm_bot.py --test YOUR_USER_ID
+   - python scripts/demo_personalized_dms.py --export --mock
+   - python scripts/send_dm_bot.py --input data/personalized_dms.json --dry-run
+
+📊 TESTING:
 1. Multi-Day Conversation Testing
    - Generate larger dataset: ./generate_data.sh --days 10 --channels 5
    - Test digest handles multi-day story arcs correctly
-   - Verify cross-team dependencies are detected across days
 
 2. Feedback Loop Testing
-   - Run feedback simulation: poetry run python scripts/run_feedback_simulation.py
+   - Run: poetry run python scripts/run_feedback_simulation.py
    - Test persona-based ranking
-   - Verify prompt enhancement from feedback
 
-3. Production Deployment (Optional)
-   - Test with actual Slack workspace
-   - Set up scheduled runs (cron or GitHub Actions)
-   - Configure proper logging and monitoring
+3. DM Bot Testing
+   - Test with mock data: --mock --dry-run
+   - Test with single user: --test USER_ID
+   - Test full workflow: see docs/PERSONALIZED_DMS.md
+
+🚀 PRODUCTION DEPLOYMENT:
+1. Set up scheduled runs (cron or GitHub Actions)
+2. Configure monitoring and logging
+3. Set up error notifications
 
 
 TECHNICAL NOTES:
