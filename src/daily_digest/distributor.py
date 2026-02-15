@@ -1,6 +1,8 @@
 """Digest distributor - posts to Slack channels and users."""
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from .slack_client import SlackClient
@@ -29,16 +31,16 @@ except ImportError:
 class DigestDistributor:
     """
     Distributes the digest to Slack with privacy-aware routing.
-    
+
     Distribution targets:
     1. Main digest channel - Header + individual item messages (for feedback)
     2. Team-specific channels - Detailed breakdown for each team
     3. Leadership DMs - Executive summary with blockers and decisions
-    
+
     Each digest item is posted as a separate message for clean feedback mapping:
     message_ts -> digest_item_id
     """
-    
+
     def __init__(
         self,
         slack_client: SlackClient,
@@ -50,7 +52,7 @@ class DigestDistributor:
         self.config = config
         self.formatter = formatter or DigestFormatter()
         self.feedback_store = feedback_store
-        
+
         # Initialize personalization components if available
         if PERSONALIZATION_AVAILABLE and feedback_store:
             self.persona_manager = PersonaManager()  # PersonaManager doesn't need feedback_store
@@ -58,9 +60,9 @@ class DigestDistributor:
         else:
             self.persona_manager = None
             self.ranker = None
-    
+
     async def distribute(
-        self, 
+        self,
         output: DigestOutput,
         team_analyses: dict[str, TeamAnalysis],
         run_id: Optional[str] = None,
@@ -68,20 +70,20 @@ class DigestDistributor:
     ) -> dict:
         """
         Distribute the digest to all targets.
-        
+
         Each digest item is posted as a separate message for feedback tracking.
-        
+
         Args:
             output: DigestOutput from orchestrator
             team_analyses: Dict of team_name -> TeamAnalysis
             run_id: Unique identifier for this digest run
             item_confidences: Optional confidence overrides from feedback processor
-        
+
         Returns:
             Dictionary with distribution results including message_ts mappings
         """
         run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         results = {
             "run_id": run_id,
             "main_post": None,
@@ -91,7 +93,7 @@ class DigestDistributor:
             "errors": [],
             "items_stored": 0,
         }
-        
+
         # 1. Post header + individual items to main digest channel
         try:
             main_results = await self._post_main_digest_with_items(
@@ -108,7 +110,7 @@ class DigestDistributor:
             error = f"Failed to post main digest: {e}"
             results["errors"].append(error)
             logger.error(error)
-        
+
         # 2. Post DETAILED breakdown to each team's channel
         for team_name, team_analysis in team_analyses.items():
             try:
@@ -119,7 +121,7 @@ class DigestDistributor:
                 error = f"Failed to post to {team_name}: {e}"
                 results["errors"].append(error)
                 logger.error(error)
-        
+
         # 3. DM leadership with executive summary
         for user_id in self.config.leadership_users:
             try:
@@ -130,9 +132,9 @@ class DigestDistributor:
                 error = f"Failed to DM {user_id}: {e}"
                 results["errors"].append(error)
                 logger.error(error)
-        
+
         return results
-    
+
     async def _post_main_digest_with_items(
         self,
         output: DigestOutput,
@@ -142,12 +144,12 @@ class DigestDistributor:
     ) -> dict:
         """
         Post header + individual item messages to main digest channel.
-        
+
         Returns dict with header result and list of item results with message_ts.
         """
         channel = self.config.digest_channel
         results = {"header": None, "items": [], "items_stored": 0}
-        
+
         # 1. Post header message first
         header_text, header_blocks = self.formatter.format_header_message(output, team_analyses)
         header_result = await self.client.post_message(
@@ -156,17 +158,17 @@ class DigestDistributor:
             blocks=header_blocks,
         )
         results["header"] = header_result
-        
+
         # 2. Get formatted items grouped by confidence
         high_conf, low_conf, excluded = self.formatter.format_digest_items(
             team_analyses, run_id, item_confidences
         )
-        
+
         logger.info(
             f"Posting {len(high_conf)} high-confidence, {len(low_conf)} low-confidence items "
             f"({len(excluded)} excluded)"
         )
-        
+
         # 3. Post high confidence items
         for item_msg in high_conf:
             try:
@@ -175,12 +177,12 @@ class DigestDistributor:
                     text=item_msg.text,
                     blocks=item_msg.blocks,
                 )
-                
+
                 # Store item with message_ts for feedback tracking
                 if self.feedback_store and result.get("ok"):
                     self._store_digest_item(item_msg, result.get("ts", ""), channel, run_id)
                     results["items_stored"] += 1
-                
+
                 results["items"].append({
                     "digest_item_id": item_msg.digest_item_id,
                     "message_ts": result.get("ts"),
@@ -190,7 +192,7 @@ class DigestDistributor:
                 })
             except Exception as e:
                 logger.warning(f"Failed to post item {item_msg.digest_item_id}: {e}")
-        
+
         # 4. Post low confidence section header if there are items
         if low_conf:
             await self.client.post_message(
@@ -201,7 +203,7 @@ class DigestDistributor:
                     "text": {"type": "mrkdwn", "text": "*📋 Lower Confidence / FYI*\n_These items may need verification:_"}
                 }]
             )
-            
+
             # Post low confidence items
             for item_msg in low_conf:
                 try:
@@ -210,11 +212,11 @@ class DigestDistributor:
                         text=item_msg.text,
                         blocks=item_msg.blocks,
                     )
-                    
+
                     if self.feedback_store and result.get("ok"):
                         self._store_digest_item(item_msg, result.get("ts", ""), channel, run_id)
                         results["items_stored"] += 1
-                    
+
                     results["items"].append({
                         "digest_item_id": item_msg.digest_item_id,
                         "message_ts": result.get("ts"),
@@ -224,9 +226,9 @@ class DigestDistributor:
                     })
                 except Exception as e:
                     logger.warning(f"Failed to post FYI item {item_msg.digest_item_id}: {e}")
-        
+
         return results
-    
+
     def _store_digest_item(
         self,
         item_msg: DigestItemMessage,
@@ -237,7 +239,7 @@ class DigestDistributor:
         """Store digest item in feedback store for feedback tracking."""
         if not self.feedback_store or not FEEDBACK_AVAILABLE:
             return
-        
+
         digest_item = DigestItem(
             digest_item_id=item_msg.digest_item_id,
             run_id=run_id,
@@ -251,30 +253,30 @@ class DigestDistributor:
             slack_channel_id=channel_id,
         )
         self.feedback_store.store_digest_item(digest_item)
-    
+
     async def _post_team_details(self, team_analysis: TeamAnalysis) -> dict:
         """Post detailed breakdown to the team's own channel."""
         channel_id = self.config.channels.get(team_analysis.team_name)
         if not channel_id:
             logger.warning(f"No channel configured for team: {team_analysis.team_name}")
             return {"ok": False, "error": "no_channel_configured"}
-        
+
         details = self.formatter.format_team_details(team_analysis)
-        
+
         return await self.client.post_message(
             channel=channel_id,
             text=details,
         )
-    
+
     async def _send_leadership_dm(
-        self, 
+        self,
         output: DigestOutput,
         team_analyses: dict[str, TeamAnalysis],
         user_id: str,
     ) -> dict:
         """
         Send personalized executive summary to leadership.
-        
+
         Uses DigestRanker to rank items based on user's persona (role, team).
         Falls back to standard formatting if personalization is not available.
         """
@@ -288,15 +290,15 @@ class DigestDistributor:
                     user_id=user_id,
                     text=personalized_content,
                 )
-        
+
         # Fall back to standard format
         summary = self.formatter.format_leadership_dm(output, team_analyses)
-        
+
         return await self.client.send_dm(
             user_id=user_id,
             text=summary,
         )
-    
+
     def _create_personalized_dm(
         self,
         output: DigestOutput,
@@ -305,13 +307,13 @@ class DigestDistributor:
     ) -> Optional[str]:
         """
         Create a personalized DM using the ranker.
-        
+
         Converts team analyses to DigestItems, ranks them by persona,
         and formats the top items for the user.
         """
         if not self.ranker or not FEEDBACK_AVAILABLE:
             return None
-        
+
         # Get user persona
         user_persona = None
         if self.feedback_store:
@@ -326,7 +328,7 @@ class DigestDistributor:
         else:
             user_role = "lead"
             user_team = "general"
-        
+
         # Extract items from team analyses
         digest_items = []
         for team_name, ta in team_analyses.items():
@@ -345,7 +347,7 @@ class DigestDistributor:
                     owners=[blocker.get("owner")] if blocker.get("owner") else [],
                 )
                 digest_items.append(item)
-            
+
             # Decisions
             for i, decision in enumerate(ta.decisions):
                 item = DigestItem(
@@ -359,7 +361,7 @@ class DigestDistributor:
                     confidence=0.85,
                 )
                 digest_items.append(item)
-            
+
             # Action items
             for i, action in enumerate(ta.action_items):
                 item = DigestItem(
@@ -374,10 +376,10 @@ class DigestDistributor:
                     owners=[action.get("owner")] if action.get("owner") else [],
                 )
                 digest_items.append(item)
-        
+
         if not digest_items:
             return None
-        
+
         # Rank items for this user
         ranked_items = self.ranker.rank_items(
             digest_items,
@@ -385,17 +387,17 @@ class DigestDistributor:
             team=user_team,
             role=user_role,
         )
-        
+
         # Partition by confidence
         high_items, low_items, _ = self.ranker.partition_by_confidence(ranked_items)
-        
+
         # Format personalized digest
         lines = [
             f"*📰 Personalized Digest - {output.global_digest.date}*",
             f"_Ranked for your role ({user_role}) and focus areas_",
             "",
         ]
-        
+
         # Top priority items (cross-team first)
         cross_team = [r for r in high_items if r.is_cross_team]
         if cross_team:
@@ -406,7 +408,7 @@ class DigestDistributor:
                 )
                 lines.append(f"{icon} *[{r.item.team.upper()}]* {r.item.title}")
             lines.append("")
-        
+
         # Key blockers
         blockers = [r for r in high_items if r.item.item_type == "blocker"][:4]
         if blockers:
@@ -415,7 +417,7 @@ class DigestDistributor:
                 cross = " 🔗" if r.is_cross_team else ""
                 lines.append(f"• *[{r.item.team.upper()}]*{cross} {r.item.title}")
             lines.append("")
-        
+
         # Key decisions
         decisions = [r for r in high_items if r.item.item_type == "decision"][:3]
         if decisions:
@@ -423,7 +425,7 @@ class DigestDistributor:
             for r in decisions:
                 lines.append(f"• *[{r.item.team.upper()}]* {r.item.title}")
             lines.append("")
-        
+
         # Action items
         actions = [r for r in high_items if r.item.item_type == "action_item"][:3]
         if actions:
@@ -432,7 +434,7 @@ class DigestDistributor:
                 owner = r.item.owners[0] if r.item.owners else "TBD"
                 lines.append(f"• *[{r.item.team.upper()}]* {r.item.title} → {owner}")
             lines.append("")
-        
+
         # Add "Why you got this" rationale for top 3 items (A2)
         top_3 = ranked_items[:3]
         if top_3:
@@ -441,19 +443,19 @@ class DigestDistributor:
                 rationale = self._explain_ranking(r, user_role, user_team)
                 lines.append(f"{i}. _{rationale}_")
             lines.append("")
-        
+
         # Summary stats
         lines.append(f"_📊 {len(high_items)} high-priority | {len(low_items)} lower-priority items_")
-        
+
         return "\n".join(lines)
-    
+
     def _explain_ranking(self, ranked_item, user_role: str, user_team: str) -> str:
         """Generate a short rationale for why this item was ranked highly."""
         reasons = []
-        
+
         if ranked_item.is_cross_team:
             reasons.append("cross-team")
-        
+
         item_type = ranked_item.item.item_type
         if item_type == "blocker":
             reasons.append("blocker")
@@ -461,25 +463,25 @@ class DigestDistributor:
             reasons.append("decision")
         elif item_type == "action_item":
             reasons.append("action needed")
-        
+
         if ranked_item.item.team.lower() == user_team.lower():
             reasons.append(f"your team ({user_team})")
-        
+
         if user_role == "lead" and item_type in ["blocker", "decision"]:
             reasons.append("lead focus")
         elif user_role == "ic" and item_type == "action_item":
             reasons.append("IC focus")
-        
+
         if ranked_item.item.severity == "high":
             reasons.append("high severity")
-        
+
         if not reasons:
             reasons.append("relevance score")
-        
+
         return f"Boosted: {' + '.join(reasons[:3])}"
-    
+
     async def preview(
-        self, 
+        self,
         output: DigestOutput,
         team_analyses: dict[str, TeamAnalysis],
         run_id: Optional[str] = None,
@@ -487,28 +489,28 @@ class DigestDistributor:
     ) -> dict:
         """
         Generate preview of what would be posted (for testing).
-        
+
         Returns formatted content without actually posting.
         """
         run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Get header
         header_text, header_blocks = self.formatter.format_header_message(output, team_analyses)
-        
+
         # Get items grouped by confidence
         high_conf, low_conf, excluded = self.formatter.format_digest_items(
             team_analyses, run_id, item_confidences
         )
-        
+
         # Legacy format for backward compatibility
         text, blocks = self.formatter.format_main_digest(output, team_analyses)
-        
+
         team_details = {}
         for team_name, ta in team_analyses.items():
             team_details[team_name] = self.formatter.format_team_details(ta)
-        
+
         leadership_dm = self.formatter.format_leadership_dm(output, team_analyses)
-        
+
         return {
             "run_id": run_id,
             "main_post": {
@@ -532,3 +534,153 @@ class DigestDistributor:
             "leadership_dm": leadership_dm,
         }
 
+    def export_personalized_dms(
+        self,
+        output: DigestOutput,
+        team_analyses: dict[str, TeamAnalysis],
+        output_path: str = "data/personalized_dms.json",
+        user_filter: Optional[list[str]] = None,
+        include_leadership_only: bool = False,
+    ) -> dict:
+        """
+        Export personalized DM messages to JSON for bot consumption.
+
+        Args:
+            output: DigestOutput from orchestrator
+            team_analyses: Dict of team_name -> TeamAnalysis
+            output_path: Path to write JSON file
+            user_filter: Optional list of specific user IDs to include
+            include_leadership_only: If True, only generate DMs for leadership users
+
+        Returns:
+            Dict with export metadata (user count, file path, errors)
+        """
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # Determine which users to generate messages for
+        if user_filter:
+            target_users = [{"id": uid} for uid in user_filter]
+        elif include_leadership_only:
+            target_users = [{"id": uid} for uid in self.config.leadership_users]
+        else:
+            # Get all non-bot users from workspace
+            target_users = self.client.get_all_users(exclude_bots=True)
+
+        logger.info(f"Generating personalized DMs for {len(target_users)} users")
+
+        messages = []
+        errors = []
+
+        for user in target_users:
+            user_id = user["id"]
+            try:
+                # Generate personalized content for this user
+                if user_id in self.config.leadership_users:
+                    # Leadership gets executive summary
+                    content = self._create_personalized_dm(
+                        output, team_analyses, user_id
+                    )
+                    if not content:
+                        # Fallback to standard leadership format
+                        content = self.formatter.format_leadership_dm(output, team_analyses)
+                    message_type = "leadership"
+                else:
+                    # Regular users get standard digest or team-specific content
+                    # You can customize this based on user's team membership
+                    content = self._create_user_dm(output, team_analyses, user_id)
+                    message_type = "standard"
+
+                if content:
+                    messages.append({
+                        "user_id": user_id,
+                        "user_name": user.get("real_name", user.get("name", user_id)),
+                        "text": content,
+                        "message_type": message_type,
+                        "run_id": run_id,
+                        "timestamp": datetime.now().isoformat(),
+                    })
+            except Exception as e:
+                error_msg = f"Failed to generate DM for {user_id}: {e}"
+                errors.append(error_msg)
+                logger.warning(error_msg)
+
+        # Write to JSON file
+        output_data = {
+            "run_id": run_id,
+            "generated_at": datetime.now().isoformat(),
+            "date": output.global_digest.date,
+            "total_messages": len(messages),
+            "messages": messages,
+            "errors": errors,
+        }
+
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, "w") as f:
+            json.dump(output_data, f, indent=2)
+
+        logger.info(f"Exported {len(messages)} personalized DMs to {output_path}")
+
+        return {
+            "run_id": run_id,
+            "output_path": str(output_file),
+            "total_users": len(target_users),
+            "messages_generated": len(messages),
+            "errors_count": len(errors),
+            "errors": errors[:5],  # Include first 5 errors only
+        }
+
+    def _create_user_dm(
+        self,
+        output: DigestOutput,
+        team_analyses: dict[str, TeamAnalysis],
+        user_id: str,
+    ) -> str:
+        """
+        Create a DM for a regular (non-leadership) user.
+
+        If personalization is available, creates a team-focused digest.
+        Otherwise, creates a basic summary.
+        """
+        # Try personalized approach if available
+        if self.ranker and PERSONALIZATION_AVAILABLE:
+            personalized = self._create_personalized_dm(
+                output, team_analyses, user_id
+            )
+            if personalized:
+                return personalized
+
+        # Fallback: create a concise summary
+        lines = [
+            f"*📰 Daily Digest - {output.global_digest.date}*",
+            "",
+            output.global_digest.summary,
+            "",
+        ]
+
+        # Add top blockers across all teams
+        all_blockers = []
+        for team_name, ta in team_analyses.items():
+            for blocker in ta.blockers[:2]:  # Top 2 per team
+                all_blockers.append(f"🚨 *[{team_name.upper()}]* {blocker.get('issue', 'Unknown')}")
+
+        if all_blockers:
+            lines.append("*Key Blockers:*")
+            lines.extend(all_blockers[:5])  # Max 5 total
+            lines.append("")
+
+        # Add key decisions
+        all_decisions = []
+        for team_name, ta in team_analyses.items():
+            for decision in ta.decisions[:1]:  # Top 1 per team
+                all_decisions.append(f"✅ *[{team_name.upper()}]* {decision.get('decision', 'Unknown')}")
+
+        if all_decisions:
+            lines.append("*Recent Decisions:*")
+            lines.extend(all_decisions[:4])  # Max 4 total
+            lines.append("")
+
+        lines.append(f"_View full details in #{self.config.digest_channel}_")
+
+        return "\n".join(lines)
