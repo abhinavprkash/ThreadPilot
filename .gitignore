@@ -53,4 +53,8 @@ poetry.lock
 .DS_Store
 Thumbs.db
 
+# Lambda deployment artifacts
+package/
+*.zip
+
 ./antigravity
