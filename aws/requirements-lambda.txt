@@ -1,16 +1,9 @@
 # AWS Lambda Requirements
-# Optimized for Lambda deployment
+# Pinned for python3.12 Lambda runtime
+# boto3 / botocore are pre-installed in the Lambda environment, but we pin
+# here to guarantee a compatible version is bundled in the deployment zip.
 
-# Core dependencies
 boto3==1.34.44
+botocore==1.34.44
 slack-sdk==3.27.1
-
-# AWS Bedrock (included in boto3)
-# botocore comes with boto3
-
-# Minimal dependencies for Lambda
 python-dotenv==1.0.1
-
-# Note: Remove heavy dev dependencies for production
-# google-genai is excluded (using Bedrock instead)
-# langchain is excluded (not needed for Bedrock)

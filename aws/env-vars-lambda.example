@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ThreadPilot – Lambda Environment Variables
+#
+# Copy these key=value pairs into:
+#   Lambda Console → Configuration → Environment variables → Edit
+#
+# DO NOT add AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY here.
+# Lambda automatically has AWS credentials via its IAM Execution Role.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Slack ─────────────────────────────────────────────────────────────────────
+SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_SIGNING_SECRET=your-signing-secret-here
+
+# ── Amazon Bedrock ────────────────────────────────────────────────────────────
+LLM_PROVIDER=bedrock
+BEDROCK_MODEL_ID=amazon.nova-micro-v1:0
+BEDROCK_REGION=ap-south-1
+
+# ── Channel IDs  (get these from Slack: right-click channel → View channel details) ──
+CHANNEL_MECHANICAL=C0A5HE4MY3U
+CHANNEL_ELECTRICAL=C0A5M2C539A
+CHANNEL_SOFTWARE=C0A5FD731PY
+CHANNEL_DIGEST=C0123456789
+
+# ── Optional: leadership DMs (comma-separated Slack user IDs) ─────────────────
+LEADERSHIP_USERS=U0123456789,U9876543210
+
+# ── Optional: lookback window ─────────────────────────────────────────────────
+LOOKBACK_HOURS=24
+
+# ── Hackathon demo: public curl trigger posts here ────────────────────────────
+# Set this to your #hackathon-live-demo channel ID.
+# Judges curl your Function URL and the digest appears in this channel.
+DEMO_CHANNEL=C...your-demo-channel-id-here
+
+# ── Optional: S3 + DynamoDB (only if you created these resources) ─────────────
+# DIGEST_S3_BUCKET=threadpilot-digests-<your-account-id>
+# STATE_TABLE_NAME=threadpilot-state

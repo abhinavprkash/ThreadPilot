@@ -13,10 +13,15 @@ Parameters:
     Description: Slack App Signing Secret
     NoEcho: true
 
+  DemoChannel:
+    Type: String
+    Description: Slack channel ID for the public hackathon demo (e.g. #hackathon-live-demo)
+    Default: ''
+
   BedrockModelId:
     Type: String
     Description: Amazon Bedrock model ID
-    Default: anthropic.claude-3-sonnet-20240229-v1:0
+    Default: amazon.nova-micro-v1:0
 
   BedrockRegion:
     Type: String
@@ -27,6 +32,7 @@ Parameters:
       - us-west-2
       - eu-west-1
       - ap-northeast-1
+      - ap-south-1
 
 Globals:
   Function:
@@ -36,7 +42,7 @@ Globals:
     Environment:
       Variables:
         LLM_PROVIDER: bedrock
-        BEDROCK_MODEL_ID: !Ref Bedrock ModelId
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
         BEDROCK_REGION: !Ref BedrockRegion
         DIGEST_S3_BUCKET: !Ref DigestBucket
         STATE_TABLE_NAME: !Ref StateTable
@@ -170,7 +176,39 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
-          SLACK_SECRETS_ARN: !Ref SlackSecrets
+          SLACK_BOT_TOKEN: !Ref SlackBotToken
+          SLACK_SIGNING_SECRET: !Ref SlackSigningSecret
+
+  # Public demo endpoint (no auth) — gives judges their curl command
+  DemoTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: threadpilot-demo-trigger
+      CodeUri: ../
+      Handler: aws.lambda_handler.function_url_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SLACK_BOT_TOKEN: !Ref SlackBotToken
+          SLACK_SIGNING_SECRET: !Ref SlackSigningSecret
+          DEMO_CHANNEL: !Ref DemoChannel
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowMethods:
+            - POST
+            - OPTIONS
+          AllowOrigins:
+            - '*'
+          AllowHeaders:
+            - content-type
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 9 * * ? *)
+            Description: Generate daily digest at 9 AM UTC
+            Enabled: true
       Events:
         # Scheduled event (daily at 9 AM UTC)
         DailySchedule:
@@ -197,7 +235,8 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn
       Environment:
         Variables:
-          SLACK_SECRETS_ARN: !Ref SlackSecrets
+          SLACK_BOT_TOKEN: !Ref SlackBotToken
+          SLACK_SIGNING_SECRET: !Ref SlackSigningSecret
       Events:
         SlackCommand:
           Type: Api
@@ -228,6 +267,14 @@ Outputs:
   DigestGeneratorFunctionArn:
     Description: Digest Generator Lambda Function ARN
     Value: !GetAtt DigestGeneratorFunction.Arn
+
+  DemoTriggerFunctionArn:
+    Description: Public demo trigger Lambda Function ARN
+    Value: !GetAtt DemoTriggerFunction.Arn
+
+  DemoTriggerUrl:
+    Description: "Public curl endpoint for judges — curl -X POST <this URL>"
+    Value: !GetAtt DemoTriggerFunction.FunctionUrl
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
