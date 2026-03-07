@@ -1,0 +1,246 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: ThreadPilot - AI-powered Slack digest generator using Amazon Bedrock
+
+Parameters:
+  SlackBotToken:
+    Type: String
+    Description: Slack Bot OAuth Token (xoxb-...)
+    NoEcho: true
+
+  SlackSigningSecret:
+    Type: String
+    Description: Slack App Signing Secret
+    NoEcho: true
+
+  BedrockModelId:
+    Type: String
+    Description: Amazon Bedrock model ID
+    Default: anthropic.claude-3-sonnet-20240229-v1:0
+
+  BedrockRegion:
+    Type: String
+    Description: AWS Region for Bedrock
+    Default: us-east-1
+    AllowedValues:
+      - us-east-1
+      - us-west-2
+      - eu-west-1
+      - ap-northeast-1
+
+Globals:
+  Function:
+    Timeout: 900  # 15 minutes for digest generation
+    MemorySize: 1024
+    Runtime: python3.11
+    Environment:
+      Variables:
+        LLM_PROVIDER: bedrock
+        BEDROCK_MODEL_ID: !Ref Bedrock ModelId
+        BEDROCK_REGION: !Ref BedrockRegion
+        DIGEST_S3_BUCKET: !Ref DigestBucket
+        STATE_TABLE_NAME: !Ref StateTable
+
+Resources:
+  # S3 Bucket for digests and logs
+  DigestBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub threadpilot-digests-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldDigests
+            Status: Enabled
+            ExpirationInDays: 90
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # DynamoDB table for state management
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: threadpilot-state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # DynamoDB table for memory (blockers, decisions)
+  MemoryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: threadpilot-memory
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: item_id
+          AttributeType: S
+        - AttributeName: item_type
+          AttributeType: S
+      KeySchema:
+        - AttributeName: item_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: type-index
+          KeySchema:
+            - AttributeName: item_type
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # Secrets Manager for Slack credentials
+  SlackSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: threadpilot/slack
+      Description: Slack API credentials
+      SecretString: !Sub |
+        {
+          "SLACK_BOT_TOKEN": "${SlackBotToken}",
+          "SLACK_SIGNING_SECRET": "${SlackSigningSecret}"
+        }
+
+  # Lambda execution role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ThreadPilotPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Bedrock access
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: !Sub arn:aws:bedrock:${BedrockRegion}::foundation-model/*
+              # S3 access
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DigestBucket.Arn
+                  - !Sub ${DigestBucket.Arn}/*
+              # DynamoDB access
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt StateTable.Arn
+                  - !GetAtt MemoryTable.Arn
+                  - !Sub ${MemoryTable.Arn}/index/*
+              # Secrets Manager access
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref SlackSecrets
+
+  # Main digest generator Lambda function
+  DigestGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: threadpilot-digest-generator
+      CodeUri: ../
+      Handler: aws.lambda_handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SLACK_SECRETS_ARN: !Ref SlackSecrets
+      Events:
+        # Scheduled event (daily at 9 AM UTC)
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 9 * * ? *)
+            Description: Generate daily digest at 9 AM UTC
+            Enabled: true
+        # API Gateway trigger (manual)
+        ApiTrigger:
+          Type: Api
+          Properties:
+            Path: /generate-digest
+            Method: post
+            RestApiId: !Ref DigestApi
+
+  # Slack webhook handler Lambda
+  SlackWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: threadpilot-slack-webhook
+      CodeUri: ../
+      Handler: aws.lambda_handler.slack_webhook_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SLACK_SECRETS_ARN: !Ref SlackSecrets
+      Events:
+        SlackCommand:
+          Type: Api
+          Properties:
+            Path: /slack/events
+            Method: post
+            RestApiId: !Ref DigestApi
+
+  # API Gateway
+  DigestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: threadpilot-api
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST, GET, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'"
+        AllowOrigin: "'*'"
+
+  # CloudWatch Log Group
+  DigestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/threadpilot-digest-generator
+      RetentionInDays: 30
+
+Outputs:
+  DigestGeneratorFunctionArn:
+    Description: Digest Generator Lambda Function ARN
+    Value: !GetAtt DigestGeneratorFunction.Arn
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${DigestApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+
+  SlackWebhookUrl:
+    Description: Slack webhook URL
+    Value: !Sub https://${DigestApi}.execute-api.${AWS::Region}.amazonaws.com/prod/slack/events
+
+  DigestBucketName:
+    Description: S3 bucket for digests
+    Value: !Ref DigestBucket
+
+  StateTableName:
+    Description: DynamoDB table for state
+    Value: !Ref StateTable
