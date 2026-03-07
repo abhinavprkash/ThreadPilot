@@ -13,11 +13,13 @@ Usage:
     poetry run python scripts/generate_synthetic_data.py [--days N] [--channels N] [--output PATH]
 
 Requirements:
-    - GOOGLE_API_KEY and CHAT_MODEL in .env
+    - AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) for Bedrock access
+    - BEDROCK_MODEL_ID (optional, defaults to anthropic.claude-3-haiku-20240307-v1:0)
 """
 
 import json
 import os
+import sys
 import random
 import argparse
 import time
@@ -25,9 +27,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from google import genai
 
 load_dotenv()
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+try:
+    from daily_digest.bedrock_client import BedrockClient, BedrockConfig
+    BEDROCK_AVAILABLE = True
+except ImportError:
+    BEDROCK_AVAILABLE = False
 
 # Rate limiting configuration
 REQUEST_DELAY = 5.0  # Seconds between requests
@@ -76,7 +84,7 @@ PERSONAS = {
         "concerns": ["supplier meetings", "scheduling", "BOM updates", "cross-team specs"],
         "typical_phrases": ["Just got back from", "FYI:", "please update the BOM", "electrical team needs"]
     },
-    
+
     # Electrical Team (4)
     "U_KEVIN": {
         "id": "U_KEVIN",
@@ -114,7 +122,7 @@ PERSONAS = {
         "concerns": ["test coverage", "edge cases", "regression", "validation"],
         "typical_phrases": ["found an issue", "edge case:", "tested on", "steps to reproduce"]
     },
-    
+
     # Software Team (4)
     "U_RYAN": {
         "id": "U_RYAN",
@@ -321,13 +329,16 @@ STORY_ARCS = [
 
 
 def get_llm():
-    """Initialize Gemini client."""
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY not found in environment")
-    
-    print(f"\n🤖 Initializing Gemini client...")
-    return genai.Client(api_key=api_key)
+    """Initialize AWS Bedrock client."""
+    if not BEDROCK_AVAILABLE:
+        raise ImportError("boto3 not installed. Run: pip install boto3")
+
+    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
+    region = os.getenv("BEDROCK_REGION", "us-east-1")
+    print(f"\n🤖 Initializing Bedrock client (model: {model_id}, region: {region})...")
+
+    config = BedrockConfig(model_id=model_id, region=region, temperature=0.7)
+    return BedrockClient(config=config)
 
 
 def generate_conversation_with_ai(
@@ -341,13 +352,13 @@ def generate_conversation_with_ai(
     story_events: list[dict] = None
 ) -> list[dict]:
     """Use LLM to generate realistic Slack conversation with story arc awareness."""
-    
+
     persona_descriptions = "\n".join([
         f"- {pid}: {PERSONAS[pid]['name']} ({PERSONAS[pid]['role']}) - {PERSONAS[pid]['style']}. "
         f"Typical phrases: {', '.join(PERSONAS[pid]['typical_phrases'][:3])}"
         for pid in personas_involved
     ])
-    
+
     # Build story context
     story_context = ""
     if story_events:
@@ -357,7 +368,7 @@ def generate_conversation_with_ai(
             blocked_by = f" (blocked by {event.get('blocked_by')})" if event.get("blocked_by") else ""
             story_context += f"- {event['event']}{blocker_text}{blocked_by}\n"
         story_context += "\nMake sure conversations naturally discuss these events."
-    
+
     prompt = f"""Generate a realistic Slack conversation for #{channel_name} channel on Day {day_number} ({date.strftime('%Y-%m-%d')}).
 
 Personas involved:
@@ -370,6 +381,7 @@ Requirements:
 - About 30% of messages should be thread replies (indicated by non-null "thread_ts")
 - About 20% of messages should have emoji reactions
 - Make conversations feel authentic with natural back-and-forth
+- KEEP MESSAGES SHORT: each message must be 1-2 sentences max (under 20 words). No long paragraphs.
 - Include occasional typos or informal language
 - {context}{story_context}
 
@@ -396,25 +408,24 @@ Generate realistic, varied content - avoid generic placeholder text."""
     # Retry logic for rate limits
     for attempt in range(MAX_RETRIES):
         try:
-            response = llm.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
+            content = llm.generate_content(
+                prompt=prompt,
+                system_prompt="You are a Slack conversation generator. Always respond with valid JSON arrays.",
             )
-            content = response.text
-            
+
             # Extract JSON from response
             start = content.find('[')
             end = content.rfind(']') + 1
-            
+
             if start != -1 and end > start:
                 json_str = content[start:end]
                 messages = json.loads(json_str)
-            
+
             # Process and add full timestamps
             base_ts = int(date.replace(hour=9, minute=0, second=0).timestamp())
             processed_messages = []
             ts_map = {}  # Map HH:MM to actual timestamp for thread references
-            
+
             for i, msg in enumerate(messages):
                 # Parse time
                 try:
@@ -424,20 +435,20 @@ Generate realistic, varied content - avoid generic placeholder text."""
                 except (ValueError, IndexError):
                     hour = 9 + (i * 10 // 60)
                     minute = (i * 10) % 60
-                
+
                 # Create unique timestamp
                 msg_ts = base_ts + (hour - 9) * 3600 + minute * 60 + i
                 ts_str = f"{msg_ts}.{i:06d}"
                 ts_map[msg['timestamp']] = ts_str
-                
+
                 # Handle thread_ts
                 thread_ts = None
                 if msg.get('thread_ts') and msg['thread_ts'] in ts_map:
                     thread_ts = ts_map[msg['thread_ts']]
-                
+
                 # Filter valid reactions
                 reactions = [r for r in msg.get('reactions', []) if isinstance(r, str)]
-                
+
                 processed_messages.append({
                     "ts": ts_str,
                     "user": msg['user'],
@@ -445,11 +456,11 @@ Generate realistic, varied content - avoid generic placeholder text."""
                     "thread_ts": thread_ts,
                     "reactions": reactions[:3]  # Limit to 3 reactions
                 })
-            
+
             # Add delay between requests to avoid rate limits
             time.sleep(REQUEST_DELAY)
             return processed_messages
-            
+
         except Exception as e:
             if "429" in str(e) or "TooManyRequests" in str(e) or "Resource has been exhausted" in str(e):
                 if attempt < MAX_RETRIES - 1:
@@ -463,13 +474,13 @@ Generate realistic, varied content - avoid generic placeholder text."""
             else:
                 print(f"  ⚠️  Error generating conversation: {e}")
                 return []
-    
+
     return []
 
 
 def add_cross_channel_blockers(dataset: dict, dates: list[str]) -> dict:
     """Add realistic cross-team dependencies and blockers."""
-    
+
     blocker_scenarios = [
         {
             "day_index": 1,
@@ -500,12 +511,12 @@ def add_cross_channel_blockers(dataset: dict, dates: list[str]) -> dict:
             "hour": 15, "minute": 0
         },
     ]
-    
+
     for scenario in blocker_scenarios:
         if scenario['day_index'] < len(dates):
             date_key = dates[scenario['day_index']]
             channel = scenario['source_channel']
-            
+
             if date_key in dataset and channel in dataset[date_key]:
                 # Create timestamp
                 base_date = datetime.strptime(date_key, '%Y-%m-%d')
@@ -513,7 +524,7 @@ def add_cross_channel_blockers(dataset: dict, dates: list[str]) -> dict:
                     hour=scenario['hour'],
                     minute=scenario['minute']
                 ).timestamp()
-                
+
                 blocker_msg = {
                     "ts": f"{int(msg_ts)}.999999",
                     "user": scenario['source_user'],
@@ -521,30 +532,30 @@ def add_cross_channel_blockers(dataset: dict, dates: list[str]) -> dict:
                     "thread_ts": None,
                     "reactions": random.sample(EMOJI_REACTIONS, k=random.randint(0, 2))
                 }
-                
+
                 dataset[date_key][channel].append(blocker_msg)
                 # Sort by timestamp
                 dataset[date_key][channel].sort(key=lambda x: x['ts'])
-    
+
     return dataset
 
 
 def generate_multi_day_dataset(days: int = 10, num_channels: int = 5) -> dict:
     """Generate a multi-day conversation dataset with story arcs."""
-    
-    print(f"\n🤖 Initializing LLM (model: {os.getenv('CHAT_MODEL', 'models/gemini-1.0-pro')})...")
+
+    print(f"\n🤖 Initializing LLM (model: {os.getenv('BEDROCK_MODEL_ID', 'anthropic.claude-3-haiku-20240307-v1:0')})...")
     llm = get_llm()
-    
+
     # Calculate dates (going back from today)
     start_date = datetime.now() - timedelta(days=days - 1)
     dates = [(start_date + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
-    
+
     # Select channels based on num_channels
     all_channels = list(CHANNELS.items())
     selected_channels = dict(all_channels[:num_channels])
-    
+
     dataset = {"channels": {}, "users": {}, "metadata": {}}
-    
+
     # Add metadata
     dataset["metadata"] = {
         "generated_at": datetime.now().isoformat(),
@@ -553,36 +564,36 @@ def generate_multi_day_dataset(days: int = 10, num_channels: int = 5) -> dict:
         "num_days": days,
         "story_arcs": [arc["name"] for arc in STORY_ARCS]
     }
-    
+
     # Add users from personas
     for pid, persona in PERSONAS.items():
         dataset["users"][pid] = {
             "name": persona["name"],
             "team": persona["team"]
         }
-    
+
     # Initialize channels
     for channel_id, channel_info in selected_channels.items():
         dataset["channels"][channel_id] = {
             "name": channel_info["name"],
             "messages": []
         }
-    
+
     # Determine which story arcs are active on which days
     print(f"\n📖 Story Arcs (spanning {days} days):")
     for arc in STORY_ARCS:
         print(f"   • {arc['name']}: {arc['description']}")
         print(f"     Teams: {', '.join(arc['teams_involved'])}, Duration: {arc['duration_days']} days")
-    
+
     # Generate conversations for each day
     all_messages_by_channel = {cid: [] for cid in selected_channels}
-    
+
     for day_idx, date_str in enumerate(dates):
         current_date = datetime.strptime(date_str, '%Y-%m-%d')
         day_number = day_idx + 1
-        
+
         print(f"\n📅 Day {day_number}/{days} ({date_str})")
-        
+
         # Find active story events for this day
         story_events_by_team = {}
         for arc in STORY_ARCS:
@@ -598,11 +609,11 @@ def generate_multi_day_dataset(days: int = 10, num_channels: int = 5) -> dict:
                             "blocker": event.get("blocker", False),
                             "blocked_by": event.get("blocked_by", "")
                         })
-        
+
         # Show which teams have active stories today
         if story_events_by_team:
             print(f"   Active stories: {', '.join([f'{t} ({len(e)} events)' for t, e in story_events_by_team.items()])}")
-        
+
         # Context varies by day
         if day_idx == 0:
             context = "Beginning of sprint. Include planning, task assignments, and goal setting."
@@ -614,23 +625,23 @@ def generate_multi_day_dataset(days: int = 10, num_channels: int = 5) -> dict:
             context = "Late sprint. Focus on finishing tasks, handling blockers, preparing for demo."
         else:
             context = "Mid-sprint. Mix of ongoing tasks, code reviews, regular progress updates."
-        
+
         for channel_id, channel_info in selected_channels.items():
             team = channel_info["name"].replace("-team", "")
-            
+
             # Get story events for this team
             team_events = story_events_by_team.get(team, [])
-            
+
             # Vary message count based on activity
             if team_events:
                 # More messages when story events are happening
-                num_messages = 18 + random.randint(0, 8)
+                num_messages = 6 + random.randint(0, 2)
                 print(f"   📝 #{channel_info['name']}: {num_messages} messages ({len(team_events)} story events)")
             else:
                 # Background chatter
-                num_messages = 8 + random.randint(0, 6)
+                num_messages = 4 + random.randint(0, 2)
                 print(f"   📝 #{channel_info['name']}: {num_messages} messages (background)")
-            
+
             messages = generate_conversation_with_ai(
                 llm=llm,
                 channel_name=channel_info["name"],
@@ -641,19 +652,19 @@ def generate_multi_day_dataset(days: int = 10, num_channels: int = 5) -> dict:
                 context=context,
                 story_events=team_events if team_events else None
             )
-            
+
             # Fail-fast check to avoid empty datasets
             if not messages:
                 raise RuntimeError(f"LLM generation failed for {channel_info['name']} on day {day_number} — no messages produced")
-            
+
             all_messages_by_channel[channel_id].extend(messages)
-    
+
     # Store all messages in channels
     for channel_id, messages in all_messages_by_channel.items():
         sorted_messages = sorted(messages, key=lambda x: x['ts'])
         dataset["channels"][channel_id]["messages"] = sorted_messages
         print(f"\n✓ #{CHANNELS[channel_id]['name']}: {len(sorted_messages)} total messages")
-    
+
     return dataset
 
 
@@ -670,34 +681,34 @@ def main(args=None):
     """Main entry point."""
     if args is None:
         args = parse_args()
-    
+
     print("=" * 70)
     print("🔧 Multi-Day Synthetic Slack Data Generator for ThreadBrief")
     print("=" * 70)
     print(f"Configuration:")
     print(f"  • Days: {args.days}")
     print(f"  • Channels: {min(args.channels, len(CHANNELS))}")
-    print(f"  • Model: gemini-2.5-flash")
-    
+    print(f"  • Model: anthropic.claude-3-haiku-20240307-v1:0 (AWS Bedrock)")
+
     # Generate dataset
     dataset = generate_multi_day_dataset(days=args.days, num_channels=min(args.channels, len(CHANNELS)))
-    
+
     # Determine output path
     if args.output:
         output_path = Path(args.output)
     else:
         output_path = Path(__file__).parent.parent / "data" / "synthetic_slack_data.json"
-    
+
     # Ensure directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Save to file
     with open(output_path, 'w') as f:
         json.dump(dataset, f, indent=2)
-    
+
     # Print summary
     total_messages = sum(len(c["messages"]) for c in dataset["channels"].values())
-    
+
     print("\n" + "=" * 70)
     print(f"✅ Generated synthetic data saved to {output_path}")
     print(f"   📁 Channels: {len(dataset['channels'])}")
@@ -706,7 +717,7 @@ def main(args=None):
     print(f"   📅 Date range: {dataset['metadata']['start_date']} to {dataset['metadata']['end_date']}")
     print(f"   📖 Story arcs: {len(dataset['metadata']['story_arcs'])}")
     print("=" * 70)
-    
+
     # Print sample
     sample_channel_id = list(dataset["channels"].keys())[0]
     sample_channel = dataset["channels"][sample_channel_id]
