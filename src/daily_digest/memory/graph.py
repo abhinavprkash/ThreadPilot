@@ -12,25 +12,29 @@ from ..models.dependencies import Dependency, DependencyType
 class DependencyGraph:
     """
     Graph structure for tracking cross-team dependencies.
-    
+
     Provides:
     - Add/query dependencies between teams
     - Get all dependencies affecting a team
     - Track resolution status
     - Generate cross-team highlights
     """
-    
+
     def __init__(self, data_dir: Optional[str] = None):
+        import os
         if data_dir:
             self.data_dir = Path(data_dir)
+        elif os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+            # Lambda: /var is read-only; use ephemeral /tmp storage
+            self.data_dir = Path('/tmp/data/memory')
         else:
             self.data_dir = Path(__file__).parent.parent.parent.parent / "data" / "memory"
-        
+
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._graph_file = self.data_dir / "dependency_graph.json"
-        
+
         self._load_graph()
-    
+
     def _load_graph(self):
         """Load graph from file."""
         if self._graph_file.exists():
@@ -41,7 +45,7 @@ class DependencyGraph:
         else:
             self.edges = []
             self.nodes = set()
-    
+
     def _save_graph(self):
         """Save graph to file."""
         with open(self._graph_file, "w") as f:
@@ -49,15 +53,15 @@ class DependencyGraph:
                 "edges": self.edges,
                 "nodes": list(self.nodes),
             }, f, indent=2)
-    
+
     def add_dependency(self, dependency: Dependency) -> str:
         """Add a dependency edge to the graph."""
         edge_id = f"dep_{len(self.edges)}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
+
         # Add nodes
         self.nodes.add(dependency.from_team)
         self.nodes.add(dependency.to_team)
-        
+
         # Create edge
         edge = {
             "edge_id": edge_id,
@@ -73,32 +77,32 @@ class DependencyGraph:
             "created_at": datetime.now().isoformat(),
             "resolved": False,
         }
-        
+
         self.edges.append(edge)
         self._save_graph()
-        
+
         return edge_id
-    
+
     def get_dependencies_for_team(
-        self, 
-        team: str, 
+        self,
+        team: str,
         direction: str = "both"
     ) -> list[dict]:
         """
         Get dependencies involving a team.
-        
+
         Args:
             team: Team name to query
-            direction: "from" (team depends on others), 
+            direction: "from" (team depends on others),
                       "to" (others depend on team),
                       "both" (all)
         """
         results = []
-        
+
         for edge in self.edges:
             if edge.get("resolved"):
                 continue
-                
+
             if direction == "from" and edge.get("from_team") == team:
                 results.append(edge)
             elif direction == "to" and edge.get("to_team") == team:
@@ -107,20 +111,20 @@ class DependencyGraph:
                 edge.get("from_team") == team or edge.get("to_team") == team
             ):
                 results.append(edge)
-        
+
         return results
-    
+
     def get_active_dependencies(self) -> list[dict]:
         """Get all unresolved dependencies."""
         return [e for e in self.edges if not e.get("resolved")]
-    
+
     def get_high_urgency_dependencies(self) -> list[dict]:
         """Get high urgency unresolved dependencies."""
         return [
-            e for e in self.edges 
+            e for e in self.edges
             if not e.get("resolved") and e.get("urgency") == "high"
         ]
-    
+
     def resolve_dependency(self, edge_id: str) -> bool:
         """Mark a dependency as resolved."""
         for edge in self.edges:
@@ -130,57 +134,57 @@ class DependencyGraph:
                 self._save_graph()
                 return True
         return False
-    
+
     def get_cross_team_highlights(self, max_count: int = 5) -> list[str]:
         """
         Generate cross-team highlights for digest.
-        
+
         Returns human-readable summaries of important dependencies.
         """
         highlights = []
-        
+
         # High urgency dependencies first
         high_urgency = self.get_high_urgency_dependencies()
         for dep in high_urgency[:2]:
             highlights.append(
                 f"🚨 {dep['from_team']} ↔ {dep['to_team']}: {dep['what_changed']}"
             )
-        
+
         # Count by team pairs
         team_pairs = {}
         for edge in self.get_active_dependencies():
             pair = tuple(sorted([edge['from_team'], edge['to_team']]))
             team_pairs[pair] = team_pairs.get(pair, 0) + 1
-        
+
         # Highlight frequent dependencies
         for pair, count in sorted(team_pairs.items(), key=lambda x: -x[1])[:3]:
             if count > 1:
                 highlights.append(
                     f"📊 {pair[0]} & {pair[1]} have {count} active dependencies"
                 )
-        
+
         return highlights[:max_count]
-    
+
     def get_team_dependency_count(self) -> dict[str, dict[str, int]]:
         """
         Get dependency counts per team.
-        
+
         Returns dict like:
         {"team_a": {"blocking": 2, "waiting_on": 1}, ...}
         """
         counts = {}
-        
+
         for edge in self.get_active_dependencies():
             team = edge.get("from_team")
             dep_type = edge.get("type")
-            
+
             if team not in counts:
                 counts[team] = {}
-            
+
             counts[team][dep_type] = counts[team].get(dep_type, 0) + 1
-        
+
         return counts
-    
+
     def add_dependencies_bulk(self, dependencies: list[Dependency]) -> list[str]:
         """Add multiple dependencies at once."""
         edge_ids = []
