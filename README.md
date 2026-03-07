@@ -1,32 +1,21 @@
 # ThreadPilot - AI-Powered Slack Digest Generator
 
-**AWS-native platform** for automatically generating intelligent daily digests from team Slack conversations using Amazon Bedrock.
+To evaluate the project, run `python judge_demo.py` — it triggers the live Lambda endpoint, seeds realistic messages into the Slack channels, runs the full AI pipeline, and prints the result. No credentials needed on your end.
 
-## 🚀 AWS Integration
+---
 
-ThreadPilot leverages AWS services for enterprise-grade AI-powered digest generation:
+## What It Does
 
-- **🤖 Amazon Bedrock** - Claude 3 Sonnet for intelligent message analysis
-- **⚡ AWS Lambda** - Serverless digest generation (zero server management)
-- **📊 Amazon DynamoDB** - State management and memory persistence
-- **📦 Amazon S3** - Audit logs and digest storage
-- **🔐 AWS Secrets Manager** - Secure credential management
-- **⏰ Amazon EventBridge** - Scheduled daily execution
-- **🌐 Amazon API Gateway** - REST API for manual triggers
+ThreadPilot automatically generates intelligent daily digests from team Slack conversations using Amazon Bedrock (Nova Micro). It fetches messages from engineering channels, runs specialized AI agents to extract blockers, decisions, and cross-team dependencies, then posts a structured digest to Slack and DMs leadership.
 
-**[📖 View complete AWS architecture & deployment guide →](docs/AWS_ARCHITECTURE.md)**
+## AWS Integration
 
-## Why AI is Required
-
-**Problem:** Engineering teams generate 100+ messages daily. Critical information (blockers, decisions, dependencies) gets buried.
-
-**AI Solution:**
-- Extract structured insights from unstructured conversations
-- Detect cross-team dependencies automatically
-- Generate personalized summaries based on role
-- Learn from feedback to improve relevance
-
-**Value:** Reduces 2-3 hours of manual digest creation to 30 seconds while improving quality.
+- Amazon Bedrock - Nova Micro for intelligent message analysis
+- AWS Lambda - Serverless digest generation (zero server management)
+- Amazon DynamoDB - State management and memory persistence
+- Amazon S3 - Audit logs and digest storage
+- AWS Secrets Manager - Secure credential management
+- Amazon EventBridge - Scheduled daily execution
 
 ## Quick Start - Local Development
 
@@ -37,19 +26,17 @@ ThreadPilot leverages AWS services for enterprise-grade AI-powered digest genera
 
 2. Choose your LLM provider:
 
-   **Option A: AWS Bedrock (Recommended for production)**
+   Option A: AWS Bedrock (Recommended for production)
    ```bash
    cp .env.example .env
-   # Add AWS credentials
    export AWS_ACCESS_KEY_ID=your-key
    export AWS_SECRET_ACCESS_KEY=your-secret
    export LLM_PROVIDER=bedrock
    ```
 
-   **Option B: Google Gemini (For local testing)**
+   Option B: Google Gemini (For local testing)
    ```bash
    cp .env.example .env
-   # Add Google API key from https://aistudio.google.com/app/apikey
    export GOOGLE_API_KEY=your-key
    export LLM_PROVIDER=gemini
    ```
@@ -59,125 +46,57 @@ ThreadPilot leverages AWS services for enterprise-grade AI-powered digest genera
    poetry run python -m daily_digest.main --mock --preview
    ```
 
-## 🏗️ Deploy to AWS (15 minutes)
-
-Deploy the full AWS stack with one command:
+## Deploy to AWS
 
 ```bash
 # Prerequisites: AWS CLI + SAM CLI installed
 sam build --template-file aws/template.yaml
 sam deploy --guided
-
-# Enter your Slack credentials when prompted
-# Stack deploys: Lambda + Bedrock + DynamoDB + S3 + API Gateway
 ```
-
-**[📖 Complete deployment guide →](docs/AWS_DEPLOYMENT.md)**
 
 ## Features
 
-- **Multi-team aggregation**: Fetches messages from mechanical, electrical, and software team channels
-- **AI-powered analysis**: Uses specialized agents powered by Google Gemini:
-  - **TeamAnalyzer**: Extracts updates, blockers, and decisions
-  - **DependencyLinker**: Detects cross-team dependencies
-  - **Feedback System**: Learns from user reactions
-  - **Personalization**: Ranks content by persona (Lead, IC, PM, Executive)
-- **Smart distribution**: Posts to digest channel, threads details, and DMs leadership
-- **Mock testing**: In-process mock Slack client for development
-- **Synthetic data generation**: Creates realistic multi-day conversations for testing
-
-## Quick Start
-
-```bash
-# 1. Install dependencies
-poetry install
-
-# 2. Set up environment variables
-cp .env.example .env
-# Edit .env and add your Google AI Studio API key:
-#   GOOGLE_API_KEY=your-key-here
-#   CHAT_MODEL=models/gemini-2.5-flash
-
-# 3. Generate synthetic conversation data (for testing)
-./generate_data.sh --days 5 --channels 5
-
-# 4. Run digest with mock Slack data + real AI analysis
-poetry run python -m daily_digest.main --mock --preview
-
-# 5. View results in terminal or check data/memory/*.json files
-```
-
-### What You'll See
-
-When you run with `--mock --preview`:
-- **Real Gemini AI** analyzes the generated conversations
-- **Terminal output** shows the formatted digest
-- **Memory files** updated:
-  - `data/memory/blockers.json` - Tracked blockers
-  - `data/memory/decisions.json` - Team decisions
-  - `data/memory/dependency_graph.json` - Cross-team dependencies
-
-**Expected output:**
-- Agent analysis takes 15-20 seconds (real API calls)
-- Extracts 9+ events, action items, dependencies
-- Shows formatted digest preview in terminal
+- Multi-team aggregation: Fetches messages from mechanical, electrical, and software team channels
+- AI-powered analysis via specialized agents:
+  - TeamAnalyzer: Extracts updates, blockers, and decisions
+  - DependencyLinker: Detects cross-team dependencies
+  - Feedback System: Learns from user reactions
+  - Personalization: Ranks content by persona (Lead, IC, PM, Executive)
+- Smart distribution: Posts to digest channel, threads details, and DMs leadership
+- Mock testing: In-process mock Slack client for development
+- Synthetic data generation: Creates realistic multi-day conversations for testing
 
 ## Command Reference
 
 ### Generate Synthetic Data
 
-Creates realistic multi-day Slack conversations for testing the digest pipeline.
-
-**Simple command (works from anywhere):**
 ```bash
-/path/to/ThreadPilot/generate_data.sh --days 5 --channels 5
-```
-
-**From project directory:**
-```bash
-cd ThreadPilot
 poetry run generate-data --days 5 --channels 5 --output data/my_conversations.json
 ```
 
-**Options:**
+Options:
 - `--days N`: Number of days to generate (default: 5)
 - `--channels N`: Number of channels to generate (default: 5, max: 5)
-- `--output PATH`: Output file path (default: data/synthetic_conversations.json)
-
-**Generated data includes:**
-- 16 personas across 5 teams (mechanical, electrical, software, product, QA)
-- Story arcs spanning multiple days with dependencies and blockers
-- Realistic conversation patterns (standups, bug reports, decisions)
-- Thread replies and emoji reactions
-- Cross-team dependencies
+- `--output PATH`: Output file path
 
 ### Run Digest Pipeline
 
-**Test with mock Slack data + real AI analysis (recommended for testing):**
+Test with mock Slack data and real AI analysis:
 ```bash
 poetry run python -m daily_digest.main --mock --preview
 ```
-- Uses fixture data from `fixtures/slack_mock.json`
-- **Real Gemini AI** analyzes the conversations
-- Shows preview in terminal (doesn't post to Slack)
-- Takes 20-30 seconds for AI analysis
 
-**With mock data, post results to mock Slack:**
-```bash
-poetry run python -m daily_digest.main --mock
-```
-
-**With real Slack (production):**
+With real Slack (production):
 ```bash
 poetry run python -m daily_digest.main
 ```
 
-**Preview mode (generate but don't post):**
+Preview mode (generate but do not post):
 ```bash
 python -m daily_digest.main --preview
 ```
 
-**Debug mode:**
+Debug mode:
 ```bash
 python -m daily_digest.main --debug
 ```
@@ -185,10 +104,7 @@ python -m daily_digest.main --debug
 ### Run Tests
 
 ```bash
-# Run all tests
 pytest tests/ -v
-
-# Run with coverage
 pytest tests/ --cov=daily_digest
 ```
 
@@ -201,110 +117,33 @@ src/daily_digest/
 ├── message_aggregator.py  # Fetch and filter messages
 ├── distributor.py         # Posts to Slack + exports DMs
 ├── formatter.py           # Formats Slack blocks and messages
-├── agents/                # LangChain agents
+├── agents/                # AI agents
 │   ├── base.py
-│   ├── extractor.py
-│   ├── blocker_detector.py
-│   ├── decision_tracker.py
-│   └── summarizer.py
-├── digest_generator.py    # Orchestrates agents
-├── formatter.py           # Formats Slack output
-├── distributor.py         # Posts to Slack
-├── state.py              # Last-run tracking
-├── observability.py      # Metrics logging
-└── main.py               # CLI entry point
+│   ├── team_analyzer.py
+│   └── dependency_linker.py
+├── orchestrator.py        # Orchestrates agents
+├── state.py               # Last-run tracking
+├── observability.py       # Metrics logging
+└── main.py                # CLI entry point
+
+aws/
+├── lambda_handler.py      # Lambda handlers (public demo endpoint + scheduled)
+├── template.yaml          # SAM template
+├── deploy.sh              # Packaging script
+└── requirements-lambda.txt
 
 scripts/
 ├── generate_synthetic_data.py   # Synthetic conversation generator
-├── send_dm_bot.py               # Standalone DM sender (reads JSON)
-└── demo_personalized_dms.py     # Example: generate + export DMs
+├── demo_trigger.py              # Local seeding + Lambda trigger
+└── send_dm_bot.py               # Standalone DM sender
 
-docs/
-└── PERSONALIZED_DMS.md          # DM bot setup and usage guide
-
-data/
-├── synthetic_conversations.json  # Generated test data
-├── personalized_dms.json        # Exported DM messages (JSON)
-├── memory/                       # Persistent memory stores
-│   ├── blockers.json
-│   └── decisions.json
-└── last_run.json                # State tracking
+judge_demo.py              # Zero-dependency judge script (runs the full pipeline)
+slack_manifest.yaml        # Slack app manifest for one-click bot install
 ```
 
-## Common Workflows
+## Notes
 
-### Test Full Pipeline with Synthetic Data
-
-```bash
-# Step 1: Generate test conversations
-cd ThreadPilot
-./generate_data.sh --days 3 --channels 3
-
-# Step 2: Run digest with mock Slack + real AI
-poetry run python -m daily_digest.main --mock --preview
-
-# Step 3: View results
-# - Check terminal output for formatted digest
-# - Open data/memory/blockers.json to see extracted blockers
-# - Open data/memory/decisions.json to see tracked decisions
-```
-
-**What to expect:**
-- Generation takes 2-3 minutes (creates realistic conversations)
-- Analysis takes 20-30 seconds (Gemini API calls)
-- You'll see HTTP 200 OK logs when Gemini API is working
-- Preview shows full digest with extracted events, blockers, decisions
-
-### Preview Digest without Posting
-
-```bash
-python -m daily_digest.main --preview
-```
-
-## Important Notes
-
-- **API Key required**: Get free key from https://aistudio.google.com/app/apikey and add to `.env`
-- **Model configuration**: Use `CHAT_MODEL=models/gemini-2.5-flash` (requires "models/" prefix)
-- **Mock mode**: The `--mock` flag only mocks Slack client, NOT the AI agents (real Gemini analysis happens)
-- **Rate limits**: Free Gemini API has rate limits, data generation includes 5s delays
-- **Project directory**: Poetry commands must be run from the directory containing `pyproject.toml`
-- **Viewing logs**: Run with `--preview` to see output in terminal, or check `data/memory/*.json` files
-- **Security**: Never commit `.env` file (already in `.gitignore`)
-
-## Architecture
-
-### Digest Generation Pipeline
-```
-Slack Channels → Aggregator → Agents → Generator → Formatter → Distributor → Slack
-      ↓              ↓           ↓          ↓           ↓            ↓
- mechanical     filter noise   extract   combine    format      #daily-digest
- electrical                   blockers   insights   blocks      leadership DMs
- software                    decisions              threads
-```
-
-### Personalized DM Bot Architecture
-```
-Digest Pipeline → JSON Export → Standalone Bot → Rate Limiter → Slack DMs
-                      ↓              ↓              ↓              ↓
-                  audit log    read messages   1 msg/sec      all users
-                  retry-able   personalized    respects       individual
-                               by role/team    limits         delivery
-```
-
-**Benefits:**
-- **Decoupled**: Digest generation separate from message delivery
-- **Reliable**: JSON acts as audit log, easy to retry failures
-- **Scalable**: Bot handles rate limits independently (~1 msg/sec)
-- **Flexible**: Can re-send same digest or customize per user
-
-**Usage:**
-```bash
-# Step 1: Generate digest and export personalized DMs
-python scripts/demo_personalized_dms.py --export
-
-# Step 2: Send DMs to users
-python scripts/send_dm_bot.py --input data/personalized_dms.json --dry-run
-python scripts/send_dm_bot.py --input data/personalized_dms.json
-```
-
-See [docs/PERSONALIZED_DMS.md](docs/PERSONALIZED_DMS.md) for detailed setup and usage.
+- The `--mock` flag only mocks the Slack client, not the AI agents (real API calls happen)
+- Mock mode uses fixture data from `fixtures/slack_mock.json`
+- Memory files are written to `data/memory/` locally and `/tmp/data/memory/` on Lambda
+- Never commit `.env` (already in `.gitignore`)
