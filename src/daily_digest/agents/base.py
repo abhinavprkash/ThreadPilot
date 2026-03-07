@@ -5,9 +5,13 @@ import os
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
-from google import genai
-
 from ..observability import logger
+
+try:
+    from ..bedrock_client import BedrockClient, BedrockConfig
+    BEDROCK_AVAILABLE = True
+except ImportError:
+    BEDROCK_AVAILABLE = False
 
 
 class BaseAgent(ABC):
@@ -20,6 +24,7 @@ class BaseAgent(ABC):
     - Returns structured JSON output
 
     Supports mock mode for testing without API keys.
+    Uses AWS Bedrock (Claude) as the LLM provider.
     """
 
     def __init__(
@@ -28,7 +33,9 @@ class BaseAgent(ABC):
         temperature: Optional[float] = None,
         mock_mode: bool = False,
     ):
-        self.model_name = model_name or os.getenv("CHAT_MODEL", "gemini-2.0-flash-exp")
+        self.model_name = model_name or os.getenv(
+            "BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0"
+        )
         self.temperature = temperature or float(os.getenv("TEMPERATURE", "0.3"))
         self.mock_mode = mock_mode or os.getenv("MOCK_LLM", "").lower() == "true"
 
@@ -37,13 +44,18 @@ class BaseAgent(ABC):
         # Only initialize client if not in mock mode
         if not self.mock_mode:
             try:
-                api_key = os.getenv("GOOGLE_API_KEY")
-                if not api_key:
-                    raise ValueError("GOOGLE_API_KEY not found in environment")
-                self.client = genai.Client(api_key=api_key)
-                logger.info(f"Initialized Gemini client with model: {self.model_name}")
+                if not BEDROCK_AVAILABLE:
+                    raise ImportError("boto3 not installed. Run: pip install boto3")
+
+                config = BedrockConfig(
+                    model_id=self.model_name,
+                    temperature=self.temperature,
+                    region=os.getenv("BEDROCK_REGION", "us-east-1"),
+                )
+                self.client = BedrockClient(config=config)
+                logger.info(f"Initialized Bedrock client with model: {self.model_name}")
             except Exception as e:
-                logger.warning(f"Failed to initialize Gemini client, falling back to mock mode: {e}")
+                logger.warning(f"Failed to initialize Bedrock client, falling back to mock mode: {e}")
                 self.mock_mode = True
 
     @property
@@ -119,24 +131,24 @@ class BaseAgent(ABC):
             # Build prompt
             prompt = self._build_prompt(messages_text, team_name)
 
-            # Call Gemini API
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={
-                    "temperature": self.temperature,
-                    "response_mime_type": "application/json"
-                }
+            # Call AWS Bedrock (Claude) API
+            system_prompt = (
+                "You are an expert at analyzing Slack messages and extracting structured information. "
+                "Always respond with valid JSON only, no additional text or markdown."
+            )
+            response_text = self.client.generate_content(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=self.temperature,
             )
 
             # Parse JSON response
-            result = json.loads(response.text)
+            result = json.loads(response_text)
             logger.debug(f"{self.agent_name} result: {result}")
             return result
 
         except json.JSONDecodeError as e:
             logger.error(f"{self.agent_name} JSON parse error: {e}")
-            logger.error(f"Response text: {response.text[:500]}")
             return self._empty_result()
         except Exception as e:
             logger.error(f"{self.agent_name} error: {e}")

@@ -1,4 +1,4 @@
-"""Multi-cloud agent base supporting AWS Bedrock and Google Gemini."""
+"""Agent base using AWS Bedrock for foundation model access."""
 
 import json
 import os
@@ -9,34 +9,27 @@ from ..observability import logger
 
 # Optional imports
 try:
-    from google import genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-
-try:
-    from ..bedrock_client import BedrockClient
+    from ..bedrock_client import BedrockClient, BedrockConfig
     BEDROCK_AVAILABLE = True
 except ImportError:
     BEDROCK_AVAILABLE = False
 
 
-LLMProvider = Literal["bedrock", "gemini", "mock"]
+LLMProvider = Literal["bedrock", "mock"]
 
 
 class MultiCloudAgent(ABC):
     """
-    Base agent class supporting multiple LLM providers.
+    Base agent class using AWS Bedrock as foundation model provider.
 
     Supports:
     - AWS Bedrock (Claude 3)
-    - Google Gemini
     - Mock mode for testing
 
     Provider priority:
     1. Explicit provider parameter
     2. LLM_PROVIDER environment variable
-    3. Auto-detect based on available credentials
+    3. Auto-detect based on AWS credentials
     4. Fall back to mock mode
     """
 
@@ -48,11 +41,11 @@ class MultiCloudAgent(ABC):
         mock_mode: bool = False,
     ):
         """
-        Initialize agent with specified LLM provider.
+        Initialize agent with Bedrock provider.
 
         Args:
-            provider: "bedrock", "gemini", or "mock"
-            model_name: Model ID (provider-specific)
+            provider: "bedrock" or "mock"
+            model_name: Bedrock model ID
             temperature: Sampling temperature
             mock_mode: If True, use mock responses
         """
@@ -73,8 +66,6 @@ class MultiCloudAgent(ABC):
 
         if self.provider == "bedrock":
             self._init_bedrock()
-        elif self.provider == "gemini":
-            self._init_gemini()
         else:
             logger.info("Using mock mode (no LLM client)")
 
@@ -82,18 +73,15 @@ class MultiCloudAgent(ABC):
         """Auto-detect provider based on environment variables."""
         # Check explicit provider setting
         env_provider = os.getenv("LLM_PROVIDER", "").lower()
-        if env_provider in ["bedrock", "gemini", "mock"]:
+        if env_provider in ["bedrock", "mock"]:
             return env_provider
 
-        # Auto-detect based on credentials
+        # Auto-detect based on AWS credentials
         if os.getenv("AWS_ACCESS_KEY_ID") and BEDROCK_AVAILABLE:
             logger.info("Auto-detected AWS credentials, using Bedrock")
             return "bedrock"
-        elif os.getenv("GOOGLE_API_KEY") and GEMINI_AVAILABLE:
-            logger.info("Auto-detected Google API key, using Gemini")
-            return "gemini"
         else:
-            logger.warning("No credentials found, falling back to mock mode")
+            logger.warning("No AWS credentials found, falling back to mock mode")
             return "mock"
 
     def _init_bedrock(self):
@@ -104,12 +92,10 @@ class MultiCloudAgent(ABC):
             return
 
         try:
-            from ..bedrock_client import BedrockClient, BedrockConfig
-
             config = BedrockConfig(
                 model_id=self.model_name or os.getenv(
                     "BEDROCK_MODEL_ID",
-                    "anthropic.claude-3-sonnet-20240229-v1:0"
+                    "amazon.nova-micro-v1:0"
                 ),
                 temperature=self.temperature,
                 region=os.getenv("BEDROCK_REGION", "us-east-1"),
@@ -121,29 +107,6 @@ class MultiCloudAgent(ABC):
 
         except Exception as e:
             logger.warning(f"Failed to initialize Bedrock client: {e}")
-            self.provider = "mock"
-
-    def _init_gemini(self):
-        """Initialize Google Gemini client."""
-        if not GEMINI_AVAILABLE:
-            logger.warning("google-genai not available, falling back to mock mode")
-            self.provider = "mock"
-            return
-
-        try:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY not found")
-
-            self.client = genai.Client(api_key=api_key)
-            self.model_name = self.model_name or os.getenv(
-                "CHAT_MODEL",
-                "models/gemini-2.5-flash"
-            )
-            logger.info(f"Initialized Gemini client with model: {self.model_name}")
-
-        except Exception as e:
-            logger.warning(f"Failed to initialize Gemini client: {e}")
             self.provider = "mock"
 
     @property
@@ -194,7 +157,7 @@ class MultiCloudAgent(ABC):
         system_prompt: Optional[str] = None,
     ) -> str:
         """
-        Generate text using the configured LLM provider.
+        Generate text using AWS Bedrock.
 
         Args:
             prompt: User prompt
@@ -207,8 +170,6 @@ class MultiCloudAgent(ABC):
             return self._generate_mock(prompt)
         elif self.provider == "bedrock":
             return self._generate_bedrock(prompt, system_prompt)
-        elif self.provider == "gemini":
-            return self._generate_gemini(prompt, system_prompt)
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
 
@@ -219,24 +180,6 @@ class MultiCloudAgent(ABC):
             system_prompt=system_prompt,
             temperature=self.temperature,
         )
-
-    def _generate_gemini(self, prompt: str, system_prompt: Optional[str]) -> str:
-        """Generate using Google Gemini."""
-        # Gemini uses system instructions differently
-        full_prompt = prompt
-        if system_prompt:
-            full_prompt = f"{system_prompt}\n\n{prompt}"
-
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=full_prompt,
-            config={
-                "temperature": self.temperature,
-                "response_mime_type": "application/json",
-            },
-        )
-
-        return response.text
 
     def _generate_mock(self, prompt: str) -> str:
         """Generate mock response for testing."""
