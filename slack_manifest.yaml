@@ -1,0 +1,85 @@
+_metadata:
+  major_version: 1
+  minor_version: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ThreadBrief — Slack App Manifest
+#
+# HOW TO USE (judges / reviewers):
+#   1. Go to https://api.slack.com/apps
+#   2. Click "Create New App" → "From a manifest"
+#   3. Pick your workspace and paste this file
+#   4. Click "Create" → "Install to Workspace"
+#   5. Copy the Bot OAuth Token (xoxb-...) from "OAuth & Permissions"
+#
+# That token + your AWS credentials are all you need to run ThreadBrief.
+# ─────────────────────────────────────────────────────────────────────────────
+
+display_information:
+  name: ThreadBrief
+  description: >-
+    AI-powered daily digest for Slack teams. ThreadBrief reads your channels,
+    identifies blockers, decisions and action items, and posts a crisp summary
+    — powered by Amazon Bedrock (Nova Micro).
+  background_color: "#1a1a2e"
+  long_description: >-
+    ThreadBrief is a serverless AI digest bot built for engineering teams.
+    Every morning (or on demand via curl) it:
+
+    1. Reads the last 24 hours of messages across your team channels.
+    2. Runs multi-agent analysis via Amazon Bedrock to extract blockers,
+       decisions, and action items.
+    3. Posts a formatted summary to your digest channel.
+    4. Sends personalized DMs to leadership.
+
+    Built with Python · AWS Lambda · Amazon Bedrock (Nova Micro) · Slack SDK.
+
+features:
+  bot_user:
+    display_name: ThreadBrief
+    always_online: false
+  slash_commands:
+    - command: /digest
+      description: Trigger a digest generation run immediately
+      usage_hint: generate
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      # ── Read channel messages ───────────────────────────────────────────────
+      - channels:history       # read public channel history
+      - groups:history         # read private channel history
+      - mpim:history           # multi-person IMs
+      - im:history             # DM history (for feedback collection)
+
+      # ── Post messages ──────────────────────────────────────────────────────
+      - chat:write             # post as the bot
+      - chat:write.customize   # post with custom username/avatar
+
+      # ── Users ──────────────────────────────────────────────────────────────
+      - users:read             # resolve user IDs to display names
+      - users:read.email       # optional: email lookup for DM routing
+
+      # ── DMs ────────────────────────────────────────────────────────────────
+      - im:write               # open DM channels
+      - mpim:write             # open group DM channels
+
+      # ── Channels (for bot to join / list) ──────────────────────────────────
+      - channels:read          # list public channels
+      - groups:read            # list private channels bot is in
+
+      # ── Reactions (for feedback collection) ────────────────────────────────
+      - reactions:read         # read emoji reactions on digest messages
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.channels       # listen for messages (feedback via reactions)
+      - reaction_added         # thumbs up/down on digest items
+      - reaction_removed
+  interactivity:
+    is_enabled: false          # set to true if you add Block Kit interactive buttons later
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
