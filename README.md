@@ -1,149 +1,263 @@
-# ThreadPilot - AI-Powered Slack Digest Generator
+# 🧵 ThreadBrief — AI-Powered Slack Digest
 
-To evaluate the project, run `python judge_demo.py` — it triggers the live Lambda endpoint, seeds realistic messages into the Slack channels, runs the full AI pipeline, and prints the result. No credentials needed on your end.
+> Automatically summarises your team's Slack conversations every day using Amazon Bedrock, extracts blockers, decisions and cross-team dependencies, then posts a structured digest back to Slack and DMs leadership.
 
 ---
 
-## What It Does
+## 👀 Step 1 — Join the Demo Slack Workspace
 
-ThreadPilot automatically generates intelligent daily digests from team Slack conversations using Amazon Bedrock (Nova Micro). It fetches messages from engineering channels, runs specialized AI agents to extract blockers, decisions, and cross-team dependencies, then posts a structured digest to Slack and DMs leadership.
+See the live output in real time. Click the link below to join:
 
-## AWS Integration
+**[→ Join the ThreadBrief Demo Slack Workspace](https://join.slack.com/t/testing-bc66069/shared_invite/zt-3rxd9kuwy-K9GDpJvEF3zaArjctcTDhQ)**
 
-- Amazon Bedrock - Nova Micro for intelligent message analysis
-- AWS Lambda - Serverless digest generation (zero server management)
-- Amazon DynamoDB - State management and memory persistence
-- Amazon S3 - Audit logs and digest storage
-- AWS Secrets Manager - Secure credential management
-- Amazon EventBridge - Scheduled daily execution
+Once inside, watch these channels:
+| Channel | Purpose |
+|---|---|
+| `#mechanical-team` | Synthetic engineering conversations posted by the bot |
+| `#electrical-team` | Synthetic conversations — electrical subteam |
+| `#software-team` | Synthetic conversations — software subteam |
+| `#all-digest` | ✅ **Where the AI digest appears** |
 
-## Quick Start - Local Development
+---
 
-1. Install dependencies:
-   ```bash
-   poetry install
-   ```
+## ⚡ Step 2 — Trigger the Live Demo (no install needed)
 
-2. Choose your LLM provider:
+Run **one of the following** in any terminal — VS Code terminal, macOS Terminal, Windows CMD, or PowerShell. No Python packages, no credentials.
 
-   Option A: AWS Bedrock (Recommended for production)
-   ```bash
-   cp .env.example .env
-   export AWS_ACCESS_KEY_ID=your-key
-   export AWS_SECRET_ACCESS_KEY=your-secret
-   export LLM_PROVIDER=bedrock
-   ```
+### macOS / Linux / VS Code terminal
+```bash
+curl -s -X POST https://xtqlsab3xyy3mw4nn6orzgbz7a0ellze.lambda-url.us-east-1.on.aws/ \
+  -H "Content-Type: application/json" \
+  -d '{"seed": true}' | python3 -m json.tool
+```
 
-   Option B: Google Gemini (For local testing)
-   ```bash
-   cp .env.example .env
-   export GOOGLE_API_KEY=your-key
-   export LLM_PROVIDER=gemini
-   ```
+### Windows CMD
+```cmd
+curl -s -X POST https://xtqlsab3xyy3mw4nn6orzgbz7a0ellze.lambda-url.us-east-1.on.aws/ -H "Content-Type: application/json" -d "{\"seed\": true}"
+```
 
-3. Run locally:
-   ```bash
-   poetry run python -m daily_digest.main --mock --preview
-   ```
+### Windows PowerShell
+```powershell
+Invoke-RestMethod -Uri "https://xtqlsab3xyy3mw4nn6orzgbz7a0ellze.lambda-url.us-east-1.on.aws/" -Method POST -ContentType "application/json" -Body '{"seed": true}'
+```
 
-## Deploy to AWS
+### Python (zero dependencies — any Python 3.6+)
+```bash
+python judge_demo.py
+```
+
+The command will take **~30–90 seconds** while the AI runs, then print a summary and post the digest to `#all-digest` in Slack.
+
+---
+
+---
+
+## 🏗️ Architecture
+
+```
+Slack Channels
+   │  (conversations from mechanical / electrical / software teams)
+   │
+   ▼
+MessageAggregator          — fetches & filters messages via Slack SDK
+   │
+   ▼
+TeamAnalyzerAgent ──────── Amazon Bedrock (Nova Micro)
+   │   extracts: blockers, decisions, action items, tone per team
+   │
+DependencyLinker ───────── Amazon Bedrock (Nova Micro)
+   │   finds: cross-team dependencies (e.g. electrical waiting on mechanical)
+   │
+   ▼
+DigestFormatter            — builds Slack Block Kit payloads
+   │
+DigestDistributor
+   ├── #all-digest channel  — org-wide summary + individual items
+   ├── #team-channels       — detailed per-team breakdown
+   └── Leadership DMs       — executive summary with blockers & decisions
+```
+
+---
+
+## ☁️ AWS Services Used
+
+### Amazon Bedrock — `amazon.nova-micro-v1:0`
+
+The core AI engine. Every digest run makes **two Bedrock `InvokeModel` calls per team**:
+
+1. **TeamAnalyzerAgent** — given the raw Slack messages for a team, returns structured JSON with:
+   - `summary` — one-paragraph narrative of the team's day
+   - `blockers` — list of blocking issues with owner, severity, status
+   - `decisions` — decisions made, who made them, impact
+   - `action_items` — next steps with owners and deadlines
+   - `tone` — productive / collaborative / challenging / routine
+
+2. **DependencyLinker** — given events from all teams, identifies cross-team dependencies and generates `CrossTeamAlert` objects (e.g. "Electrical is blocked on Mechanical's motor mount dimensions").
+
+**Why Nova Micro?** It is Amazon's fastest and cheapest Bedrock model, ideal for structured JSON extraction from short-to-medium text. The prompts are carefully engineered so the model returns clean, parseable JSON every time.
+
+---
+
+### AWS Lambda — Serverless Digest Engine
+
+The entire pipeline runs inside a **single Lambda function** (`threadpilot-digest-generator`):
+
+| Property | Value |
+|---|---|
+| Runtime | Python 3.11 |
+| Timeout | 900 s (15 min) — enough for multi-team analysis |
+| Memory | 1024 MB |
+| Trigger (scheduled) | EventBridge cron — every day at 09:00 UTC |
+| Trigger (on-demand) | Public Lambda Function URL (no auth) — used by `judge_demo.py` |
+
+**Why serverless?**
+- **Zero server management** — no EC2, no containers to keep alive, no SSH
+- **Pay-per-execution** — costs fractions of a cent per digest run; $0 when idle
+- **Auto-scaling** — if you add 50 more channels, Lambda handles it; no resizing
+- **Built-in retries** — Lambda retries on transient failures automatically
+- **Cold start is fine here** — digest generation takes 30–90 s; a 1–2 s cold start is negligible
+- **IAM-scoped permissions** — the function only has the exact Bedrock/DynamoDB/S3 permissions it needs, nothing more
+
+A second Lambda (`threadpilot-demo-trigger`) serves as the **public-facing HTTP endpoint** for judges — it has a Function URL with `AuthType: NONE` so anyone can POST to it without credentials.
+
+---
+
+### Amazon DynamoDB — State & Memory
+
+Two tables, both on **PAY_PER_REQUEST** billing (no provisioned throughput to manage):
+
+| Table | Purpose |
+|---|---|
+| `threadpilot-state` | Tracks the timestamp of the last successful run so the next run only fetches *new* messages |
+| `threadpilot-memory` | Persists blockers, decisions, and dependency graph across runs — the bot "remembers" that a blocker from Tuesday wasn't resolved by Wednesday |
+
+---
+
+### Amazon S3 — Audit Logs
+
+Every digest output is written to `threadpilot-digests-{account-id}` as a timestamped JSON file. Objects expire after 90 days via a lifecycle rule. This provides a full audit trail of what was posted when and why.
+
+---
+
+### AWS Secrets Manager — Credential Security
+
+Slack tokens (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`) are stored in Secrets Manager under `threadpilot/slack`, **not in environment variables**. Lambda retrieves them at startup via `GetSecretValue`. This means credentials are:
+- Encrypted at rest (AWS KMS)
+- Never visible in Lambda console environment variable panes
+- Rotatable without redeploying
+
+---
+
+### Amazon EventBridge — Scheduled Execution
+
+A cron rule fires every day at 09:00 UTC, invoking the digest Lambda automatically. No cron jobs on servers, no schedulers to maintain.
+
+---
+
+## 🔁 Full Request Flow (when you run the curl command)
+
+```
+Your terminal
+   │  POST {"seed": true}
+   ▼
+Lambda Function URL (threadpilot-demo-trigger)   ← no auth, public HTTPS
+   │
+   ├─ Clear old bot messages from team channels
+   ├─ Generate synthetic engineering conversations (Bedrock)
+   ├─ Post messages to #mechanical-team, #electrical-team, #software-team
+   │
+   └─ Run digest pipeline:
+        ├─ Fetch those messages back via Slack API
+        ├─ TeamAnalyzerAgent × 3 teams   (Bedrock InvokeModel)
+        ├─ DependencyLinker              (Bedrock InvokeModel)
+        ├─ Format into Slack Block Kit
+        └─ Post to #all-digest + send leadership DMs
+   │
+   ▼
+HTTP 200 { "success": true, "teams_processed": 3, "elapsed_seconds": 47 }
+```
+
+---
+
+## 🔑 Feedback & Personalization Loop
+
+ThreadBrief learns from Slack emoji reactions on digest items:
+
+| Emoji | Signal |
+|---|---|
+| ✅ | Accurate — boost this type of item |
+| ❌ | Wrong — suppress similar items |
+| 🧩 | Missing context — add more detail |
+| 🔕 | Not relevant — lower priority for this persona |
+
+Reactions are processed before the next digest run and used to tune the AI prompts via a `PromptEnhancer` that injects learned directives (e.g. "For mechanical team, always include tolerance specs in blocker descriptions").
+
+Personas (Lead, IC, PM, Executive) each get a differently-ranked digest via `DigestRanker`.
+
+---
+
+## 🗂️ Project Structure
+
+```
+src/daily_digest/
+├── main.py                # CLI + async entry point
+├── orchestrator.py        # Wires all agents together
+├── slack_client.py        # Real + Mock Slack client
+├── message_aggregator.py  # Fetch, filter, enrich messages
+├── formatter.py           # Slack Block Kit formatting
+├── distributor.py         # Posts to channels + DMs
+├── config.py              # Channel/model configuration
+├── state.py               # Last-run timestamp tracking
+├── observability.py       # Structured metrics logging
+├── agents/
+│   ├── team_analyzer.py   # Bedrock: extract blockers/decisions/updates
+│   └── dependency_linker.py # Bedrock: cross-team dependency detection
+├── feedback/              # Emoji reaction learning system
+├── memory/                # Persistent blocker/decision graph
+└── personalization/       # Per-persona content ranking
+
+aws/
+├── lambda_handler.py      # Lambda entrypoints (digest + demo URL + webhook)
+├── template.yaml          # SAM / CloudFormation — full infra as code
+└── requirements-lambda.txt
+
+scripts/
+├── full_demo.py           # One-command local demo (generate → seed → digest)
+└── generate_synthetic_data.py  # AI-powered conversation generator
+
+judge_demo.py              # Zero-dependency trigger script (standard library only)
+```
+
+---
+
+## 🛠️ Local Development
 
 ```bash
-# Prerequisites: AWS CLI + SAM CLI installed
+# Install dependencies
+poetry install
+
+# Run full end-to-end demo locally (generates data, seeds Slack, runs digest)
+poetry run python scripts/full_demo.py
+
+# Run against real Slack (production mode)
+poetry run daily-digest
+
+# Preview mode — generate digest but don't post
+poetry run daily-digest --preview
+
+# Mock mode — use fixture data, don't touch real Slack
+poetry run daily-digest --mock --preview
+```
+
+---
+
+## 🚀 Deploy to AWS
+
+Requires AWS CLI + SAM CLI:
+
+```bash
 sam build --template-file aws/template.yaml
 sam deploy --guided
 ```
 
-## Features
-
-- Multi-team aggregation: Fetches messages from mechanical, electrical, and software team channels
-- AI-powered analysis via specialized agents:
-  - TeamAnalyzer: Extracts updates, blockers, and decisions
-  - DependencyLinker: Detects cross-team dependencies
-  - Feedback System: Learns from user reactions
-  - Personalization: Ranks content by persona (Lead, IC, PM, Executive)
-- Smart distribution: Posts to digest channel, threads details, and DMs leadership
-- Mock testing: In-process mock Slack client for development
-- Synthetic data generation: Creates realistic multi-day conversations for testing
-
-## Command Reference
-
-### Generate Synthetic Data
-
-```bash
-poetry run generate-data --days 5 --channels 5 --output data/my_conversations.json
-```
-
-Options:
-- `--days N`: Number of days to generate (default: 5)
-- `--channels N`: Number of channels to generate (default: 5, max: 5)
-- `--output PATH`: Output file path
-
-### Run Digest Pipeline
-
-Test with mock Slack data and real AI analysis:
-```bash
-poetry run python -m daily_digest.main --mock --preview
-```
-
-With real Slack (production):
-```bash
-poetry run python -m daily_digest.main
-```
-
-Preview mode (generate but do not post):
-```bash
-python -m daily_digest.main --preview
-```
-
-Debug mode:
-```bash
-python -m daily_digest.main --debug
-```
-
-### Run Tests
-
-```bash
-pytest tests/ -v
-pytest tests/ --cov=daily_digest
-```
-
-## Project Structure
-
-```
-src/daily_digest/
-├── config.py              # Channel and distribution configuration
-├── slack_client.py        # Real + Mock Slack client wrapper
-├── message_aggregator.py  # Fetch and filter messages
-├── distributor.py         # Posts to Slack + exports DMs
-├── formatter.py           # Formats Slack blocks and messages
-├── agents/                # AI agents
-│   ├── base.py
-│   ├── team_analyzer.py
-│   └── dependency_linker.py
-├── orchestrator.py        # Orchestrates agents
-├── state.py               # Last-run tracking
-├── observability.py       # Metrics logging
-└── main.py                # CLI entry point
-
-aws/
-├── lambda_handler.py      # Lambda handlers (public demo endpoint + scheduled)
-├── template.yaml          # SAM template
-├── deploy.sh              # Packaging script
-└── requirements-lambda.txt
-
-scripts/
-├── generate_synthetic_data.py   # Synthetic conversation generator
-├── demo_trigger.py              # Local seeding + Lambda trigger
-└── send_dm_bot.py               # Standalone DM sender
-
-judge_demo.py              # Zero-dependency judge script (runs the full pipeline)
-slack_manifest.yaml        # Slack app manifest for one-click bot install
-```
-
-## Notes
-
-- The `--mock` flag only mocks the Slack client, not the AI agents (real API calls happen)
-- Mock mode uses fixture data from `fixtures/slack_mock.json`
-- Memory files are written to `data/memory/` locally and `/tmp/data/memory/` on Lambda
-- Never commit `.env` (already in `.gitignore`)
+The guided deploy prompts for your `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and channel IDs — everything else is wired automatically via the SAM template.
