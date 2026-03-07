@@ -1,4 +1,4 @@
-"""Digest Evaluator - LLM-based quality assessment of digest items."""
+"""Digest Evaluator - LLM-based quality assessment of digest items using AWS Bedrock."""
 
 import json
 import os
@@ -6,7 +6,11 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 from datetime import datetime
 
-from google import genai
+try:
+    from ..bedrock_client import BedrockClient, BedrockConfig
+    BEDROCK_AVAILABLE = True
+except ImportError:
+    BEDROCK_AVAILABLE = False
 
 from ..personalization.personas import Persona
 from ..feedback.feedback_store import DigestItem
@@ -109,16 +113,22 @@ class DigestEvaluator:
         """
         self.use_mock = use_mock
         self._client = None
-        self.model = os.getenv("CHAT_MODEL", "gemini-2.0-flash-exp")
+        self.model = os.getenv(
+            "BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0"
+        )
 
     @property
     def client(self):
-        """Lazy-load Gemini client."""
+        """Lazy-load Bedrock client."""
         if self._client is None:
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY not found in environment")
-            self._client = genai.Client(api_key=api_key)
+            if not BEDROCK_AVAILABLE:
+                raise ImportError("boto3 not installed. Run: pip install boto3")
+            config = BedrockConfig(
+                model_id=self.model,
+                region=os.getenv("BEDROCK_REGION", "us-east-1"),
+                temperature=0.3,
+            )
+            self._client = BedrockClient(config=config)
         return self._client
 
     def evaluate_items(
@@ -343,20 +353,12 @@ Return a JSON array with one evaluation per item.
 """
 
         try:
-            # Call Gemini API directly
-            full_prompt = f"You are a digest quality evaluator. Respond only with valid JSON.\\n\\n{prompt}"
-
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=full_prompt,
-                config={
-                    "temperature": 0.3,
-                    "response_mime_type": "application/json"
-                }
+            # Call AWS Bedrock (Claude) API
+            content = self.client.generate_content(
+                prompt=prompt,
+                system_prompt="You are a digest quality evaluator. Respond only with valid JSON.",
+                temperature=0.3,
             )
-
-            # Parse JSON response
-            content = response.text
             start = content.find("[")
             end = content.rfind("]") + 1
 

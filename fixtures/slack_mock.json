@@ -4,150 +4,194 @@
       "name": "mechanical-team",
       "messages": [
         {
-          "ts": "1768015920.000000",
+          "ts": "1772854200.000000",
           "user": "U_MARIA",
-          "text": "Good morning, team! Happy Friday and officially Day 1 of our Q1 Sprint. Let's do a quick virtual standup. What did you accomplish yesterday (well, pre-sprint prep) and what's your focus for today? Any blockers?",
+          "text": "Morning team! Let's start with the standup. Alex, how's FEA going?",
           "thread_ts": null,
           "reactions": [
-            "\ud83d\udc4b"
+            "\ud83c\udf05"
           ]
         },
         {
-          "ts": "1768016281.000001",
+          "ts": "1772854501.000001",
           "user": "U_ALEX",
-          "text": "Morning! Yesterday, finalized CAD for the motor mount Rev 2.0. Today, my main focus is kicking off the FEA simulation for that same mount, specifically looking at vibration fatigue and static stress requirements. Also need to cross-check tolerances.",
-          "thread_ts": null,
-          "reactions": []
-        },
-        {
-          "ts": "1768016522.000002",
-          "user": "U_SARAH",
-          "text": "Hey all! Yesterday was mostly BOM cleanup and sync with procurement. Today, I'm coordinating with the Electrical team on the new enclosure interface specs and then updating the main project BOM for the Q1 deliverables. FYI: integration team needs the motor mount dimensions by EOD next Tuesday latest.",
-          "thread_ts": null,
-          "reactions": []
-        },
-        {
-          "ts": "1768016763.000003",
-          "user": "U_JAMES",
-          "text": "Morning. Yesterday I did a deep dive into raw material inventory for the new batch of mounts, looks okay for current design. Today, following up with our aluminum supplier on lead times for the 6061-T6 stock for Rev 2.0, and checking CNC machine availability for the initial prototyping runs.",
-          "thread_ts": null,
-          "reactions": []
-        },
-        {
-          "ts": "1768017004.000004",
-          "user": "U_MARIA",
-          "text": "Thanks team. Sounds like a solid start. Alex, keep us posted on that FEA. Sarah, excellent on the cross-team coordination, that Tuesday deadline for the mount is tight now. James, good to hear on inventory, stay on top of those lead times. Let's sync again after lunch.",
-          "thread_ts": null,
-          "reactions": []
-        },
-        {
-          "ts": "1768023305.000005",
-          "user": "U_ALEX",
-          "text": "Team, I've got a problem. Just finished the initial static stress FEA for the motor mount Rev 2.0. The stress concentration at the fillet near the mounting holes is significantly higher than expected, exceeding our safety margin by roughly 15%. Max principal stress is 320 MPa when the material yield strength is 280 MPa. This is a blocker. \ud83d\ude2c",
-          "thread_ts": null,
+          "text": "Running FEA simulation. Stress conc. in motor mount is high.",
+          "thread_ts": "1772854200.000000",
           "reactions": [
             "\u26a0\ufe0f"
           ]
         },
         {
-          "ts": "1768023606.000006",
-          "user": "U_MARIA",
-          "text": "Decision: @U_ALEX That's a critical flag. Can you confirm the exact safety factor and what the implications are for the overall assembly's integrity? Thread for discussion here.",
-          "thread_ts": "1768023305.000005",
-          "reactions": []
-        },
-        {
-          "ts": "1768023907.000007",
-          "user": "U_SARAH",
-          "text": "Oh yikes. Just got back from the integration meeting, they're counting on that mount design being stable. This will definitely impact their assembly schedule if we need redesign. What's the preliminary timeline impact, Alex?",
-          "thread_ts": "1768023305.000005",
-          "reactions": []
-        },
-        {
-          "ts": "1768024328.000008",
-          "user": "U_ALEX",
-          "text": "Thread Reply: @U_MARIA The safety factor is down to 0.87. It's concentrated at the interface with the motor housing. Could lead to premature fatigue failure if not addressed. @U_SARAH, impact could be significant depending on the fix, but let me re-run with some minor tweaks first.",
-          "thread_ts": "1768023305.000005",
-          "reactions": []
-        },
-        {
-          "ts": "1768024689.000009",
+          "ts": "1772858702.000002",
           "user": "U_JAMES",
-          "text": "Thread Reply: If we need to change material spec or significantly alter the geometry, our current stock of raw aluminum for v1.0 mounts won't be usable for v2.0. Lead time for new stock might push us out another 3-4 weeks from current schedule. Maintenance says CNC capacity is okay for slight geometry adjustments, but not major retooling without notice.",
-          "thread_ts": "1768023305.000005",
-          "reactions": []
+          "text": "Running low on parts. CNC ops on hold. @Alex, need new specs soon.",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83d\udee0\ufe0f"
+          ]
         },
         {
-          "ts": "1768025110.000010",
+          "ts": "1772859003.000003",
           "user": "U_MARIA",
-          "text": "Decision: This is our top priority blocker. @U_ALEX, drop everything else and focus on refining the FEA and proposing immediate design changes. Explore increasing fillet radius, or localized material thickening. @U_SARAH, please inform integration about this immediate blocker and potential schedule slip. Let's aim for a revised proposal by end of day.",
-          "thread_ts": null,
+          "text": "Decision: Stress issue needs immediate attention. @Sarah, please update the BOM.",
+          "thread_ts": "1772858702.000002",
           "reactions": [
-            "\ud83d\udea8"
+            "\ud83d\udcdd"
           ]
         },
         {
-          "ts": "1768025411.000011",
-          "user": "U_ALEX",
-          "text": "Acknowledged, Maria. Diving back in now.",
-          "thread_ts": "1768025110.000010",
-          "reactions": [
-            "\ud83d\udc4d"
-          ]
-        },
-        {
-          "ts": "1768035612.000012",
-          "user": "U_ALEX",
-          "text": "Update: Ran a quick study. Increasing fillet radius by 0.5mm brings the max stress down to 295 MPa. Still over yield (280 MPa), but an improvement. Next thought: what if we increase the mounting flange thickness by 0.5mm? This would require a CAD change.",
-          "thread_ts": null,
-          "reactions": [
-            "\ud83e\udd1e"
-          ]
-        },
-        {
-          "ts": "1768035913.000013",
+          "ts": "1772863204.000004",
           "user": "U_SARAH",
-          "text": "Thread Reply: @U_ALEX If we increase thickness by 0.5mm, will it affect clearances with the enclosure or other adjacent components? I recall the space around the mount was already quite tight.",
-          "thread_ts": "1768035612.000012",
-          "reactions": []
-        },
-        {
-          "ts": "1768036214.000014",
-          "user": "U_ALEX",
-          "text": "Thread Reply: @U_SARAH Good point. Quick check in CAD shows it might interfere with the cable harness by about 0.2mm on one side. Not ideal, would need a harness re-route or custom bracket. Definitely a knock-on effect.",
-          "thread_ts": "1768035612.000012",
-          "reactions": []
-        },
-        {
-          "ts": "1768036515.000015",
-          "user": "U_JAMES",
-          "text": "Thread Reply: Re-running the CNC program for a slightly thicker flange isn't a huge deal from a manufacturing perspective, assuming no new material. But the 0.2mm interference with the harness sounds like a pain. What's the plan there @U_MARIA?",
-          "thread_ts": "1768035612.000012",
-          "reactions": []
-        },
-        {
-          "ts": "1768037416.000016",
-          "user": "U_MARIA",
-          "text": "Decision: Okay, let's hold off on any changes that trigger cross-functional design updates (like harness re-routing or new material procurement) for now. @U_ALEX, focus on optimizing the fillet geometry further or exploring adding a small gusset to the critical areas, keeping the original thickness and envelope. Let's try to contain this to mechanical design only. @U_SARAH, please update integration again \u2013 we're actively working on a solution and will aim for a revised design proposal with a solution by EOD today, or first thing Monday.",
-          "thread_ts": null,
-          "reactions": []
-        },
-        {
-          "ts": "1768037717.000017",
-          "user": "U_ALEX",
-          "text": "Got it, Maria. Will explore gusseting options and more aggressive fillet radius optimization.",
-          "thread_ts": "1768037416.000016",
+          "text": "Just got back from supplier. Lead time is 2 weeks. FYI:",
+          "thread_ts": "1772859003.000003",
           "reactions": [
-            "\ud83d\ude80"
+            "\u23f3"
           ]
         },
         {
-          "ts": "1768047318.000018",
+          "ts": "1772885705.000005",
           "user": "U_MARIA",
-          "text": "End of day summary: Critical issue identified with motor mount Rev 2.0 FEA showing stress concentration exceeding safety margins. @U_ALEX is actively exploring geometry optimizations (fillet, gusseting) to mitigate without impacting other teams. @U_SARAH has updated integration on the potential delay. @U_JAMES is on standby for manufacturing impact. Priority for Monday morning: review Alex's final design proposal for Rev 2.1 to address the stress issue. Good work everyone tackling this quickly today. Have a good weekend.",
+          "text": "End of day summary. Motor mount stress flagged. @James, monitor inventory.",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83d\udccb"
+          ]
+        }
+      ]
+    },
+    "C_ELECTRICAL": {
+      "name": "electrical-team",
+      "messages": [
+        {
+          "ts": "1772854200.000000",
+          "user": "U_KEVIN",
+          "text": "Morning team! Let's discuss PCB Rev 1 today. @Tom, any updates?",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83d\udd27"
+          ]
+        },
+        {
+          "ts": "1772854501.000001",
+          "user": "U_TOM",
+          "text": "I'll start the layout. @Kevin, thermal analysis is next.",
+          "thread_ts": "1772854200.000000",
+          "reactions": [
+            "\u2705"
+          ]
+        },
+        {
+          "ts": "1772856002.000002",
+          "user": "U_LISA",
+          "text": "I'll run the full stress test. 85\u00b0C is above spec.",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83d\udd25"
+          ]
+        },
+        {
+          "ts": "1772862303.000003",
+          "user": "U_PRIYA",
+          "text": "found an issue with thermal shutdown. @Lisa?",
+          "thread_ts": "1772856002.000002",
+          "reactions": [
+            "\u26a0\ufe0f"
+          ]
+        },
+        {
+          "ts": "1772863204.000004",
+          "user": "U_LISA",
+          "text": "thermal shutting down, blocked on firmware @Kevin.",
+          "thread_ts": "1772862303.000003",
+          "reactions": [
+            "\ud83d\udd12"
+          ]
+        },
+        {
+          "ts": "1772875805.000005",
+          "user": "U_KEVIN",
+          "text": "Decision: Option A, let's try that. @Tom?",
+          "thread_ts": "1772863204.000004",
+          "reactions": [
+            "\ud83d\udca1"
+          ]
+        },
+        {
+          "ts": "1772877606.000006",
+          "user": "U_TOM",
+          "text": "I ran thermal sims, let's review.",
+          "thread_ts": "1772875805.000005",
+          "reactions": [
+            "\ud83d\udcca"
+          ]
+        },
+        {
+          "ts": "1772885707.000007",
+          "user": "U_KEVIN",
+          "text": "Great work team! Wrap up for today.",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83e\udd73"
+          ]
+        }
+      ]
+    },
+    "C_SOFTWARE": {
+      "name": "software-team",
+      "messages": [
+        {
+          "ts": "1772854500.000000",
+          "user": "U_RYAN",
+          "text": "Morning team! Today's sprint starts. Deployed to staging. #telemetryAPI update?",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83d\udd35",
+            "\ud83d\udd34"
+          ]
+        },
+        {
+          "ts": "1772855101.000001",
+          "user": "U_AMANDA",
+          "text": "Reviewing now. Found a potential issue with new API.",
+          "thread_ts": "1772854500.000000",
+          "reactions": [
+            "\ud83d\udd34"
+          ]
+        },
+        {
+          "ts": "1772863202.000002",
+          "user": "U_CHEN",
+          "text": "PR is up: #345 for bug fix. @Amanda?",
           "thread_ts": null,
           "reactions": [
             "\u2705"
+          ]
+        },
+        {
+          "ts": "1772871303.000003",
+          "user": "U_DAVID",
+          "text": "mobile app team on P99 latencies. Any thoughts?",
+          "thread_ts": null,
+          "reactions": [
+            "\u23f1\ufe0f"
+          ]
+        },
+        {
+          "ts": "1772875804.000004",
+          "user": "U_AMANDA",
+          "text": "Good catch! Let's discuss this later. #teamsync?",
+          "thread_ts": "1772871303.000003",
+          "reactions": [
+            "\u23f0"
+          ]
+        },
+        {
+          "ts": "1772886005.000005",
+          "user": "U_RYAN",
+          "text": "End-of-day: everyone aligned? Next sprint?",
+          "thread_ts": null,
+          "reactions": [
+            "\ud83d\udc4d"
           ]
         }
       ]
@@ -220,9 +264,9 @@
     }
   },
   "metadata": {
-    "generated_at": "2026-01-10T21:29:26.601167",
-    "start_date": "2026-01-10",
-    "end_date": "2026-01-10",
+    "generated_at": "2026-03-07T15:13:00.498201",
+    "start_date": "2026-03-07",
+    "end_date": "2026-03-07",
     "num_days": 1,
     "story_arcs": [
       "Motor Mount Redesign",
