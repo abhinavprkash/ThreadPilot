@@ -306,14 +306,53 @@ _CHANNEL_ENV_MAP = {
 }
 
 
+def _channel_already_seeded(token: str, channel_id: str, within_seconds: int = 3600) -> bool:
+    """
+    Return True if the channel already contains the demo messages seeded
+    within the last `within_seconds` (default 1 hour).  This prevents
+    posting the same hardcoded messages again on repeated demo triggers,
+    which would cause the AI to see duplicate content.
+    """
+    import time as _time
+    cutoff = _time.time() - within_seconds
+    req = urllib.request.Request(
+        f'https://slack.com/api/conversations.history?channel={channel_id}&limit=20',
+        headers={'Authorization': f'Bearer {token}'},
+        method='GET',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        messages = data.get('messages', [])
+        # Look for any recent message whose text matches one of the demo strings
+        for msg in messages:
+            if float(msg.get('ts', '0')) < cutoff:
+                continue
+            for team_msgs in _DEMO_MESSAGES.values():
+                if msg.get('text', '') in team_msgs:
+                    return True
+    except Exception as e:
+        print(f"Seed check error: {e}")
+    return False
+
+
 def _seed_demo_messages(token: str) -> int:
-    """Post demo messages to all team channels. Returns total posted count."""
+    """
+    Post demo messages to all team channels. Returns total posted count.
+
+    Skips a channel if it already has fresh demo messages (seeded within the
+    last hour) to avoid accumulating duplicate content across repeated demo
+    triggers.
+    """
     import time as _time
     posted = 0
     for team, env_key in _CHANNEL_ENV_MAP.items():
         channel_id = os.getenv(env_key, '')
         if not channel_id:
             print(f"Seed: skipping {team} — {env_key} not set")
+            continue
+        if _channel_already_seeded(token, channel_id):
+            print(f"Seed: {team} already has fresh demo messages, skipping re-seed")
             continue
         for text in _DEMO_MESSAGES[team]:
             payload = json.dumps({
@@ -428,6 +467,10 @@ def function_url_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     # ── Step 2: Run the full pipeline ─────────────────────────────────────────
     try:
         os.environ.setdefault('LLM_PROVIDER', 'bedrock')
+        # Demo messages are posted by the bot token, so Slack marks them with
+        # bot_id.  Without this override the noise filter drops every seeded
+        # message and the pipeline sees 0 messages → "no digest".
+        os.environ['FILTER_BOTS'] = 'false'
 
         config = DigestConfig.from_env()
 
