@@ -29,6 +29,12 @@ LEADERSHIP_USERS=U0123456789,U9876543210
 # ── Optional: lookback window ─────────────────────────────────────────────────
 LOOKBACK_HOURS=24
 
+# ── Message filtering ────────────────────────────────────────────────────────
+# Set to false for demo mode: demo messages are posted by the bot token so
+# Slack marks them with bot_id.  Keeping FILTER_BOTS=true would silently drop
+# all seeded messages and produce an empty "no digest" result.
+FILTER_BOTS=false
+
 # ── Hackathon demo: public curl trigger posts here ────────────────────────────
 # Set this to your #hackathon-live-demo channel ID.
 # Judges curl your Function URL and the digest appears in this channel.
